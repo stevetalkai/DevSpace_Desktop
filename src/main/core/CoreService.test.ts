@@ -66,4 +66,45 @@ describe('CoreService', () => {
 
     expect(service.getStatus()).toMatchObject({ phase: 'failed', errorCode: 'core_crashed' })
   })
+
+  it('restarts a running process with updated allowed roots', async () => {
+    const children = [new FakeChild(), new FakeChild()]
+    const environments: NodeJS.ProcessEnv[] = []
+    const service = new CoreService({
+      allowedRoots: ['/private/empty'],
+      fallbackRoot: '/private/empty',
+      resolveCli: () => '/fake/cli.js',
+      probePort: async () => true,
+      spawnCore: (_cliPath, _port, environment) => {
+        environments.push({ ...environment })
+        return children.shift() as never
+      }
+    })
+    await service.start()
+
+    const status = await service.replaceAllowedRoots(['/projects/one', '/projects/two'])
+
+    expect(status.phase).toBe('running')
+    expect(environments).toHaveLength(2)
+    expect(environments[1]?.DEVSPACE_ALLOWED_ROOTS).toBe('/projects/one,/projects/two')
+  })
+
+  it('returns to the private fallback root after the last project is removed', async () => {
+    const environments: NodeJS.ProcessEnv[] = []
+    const service = new CoreService({
+      allowedRoots: ['/projects/one'],
+      fallbackRoot: '/private/empty',
+      resolveCli: () => '/fake/cli.js',
+      probePort: async () => true,
+      spawnCore: (_cliPath, _port, environment) => {
+        environments.push({ ...environment })
+        return new FakeChild() as never
+      }
+    })
+    await service.start()
+
+    await service.replaceAllowedRoots([])
+
+    expect(environments[1]?.DEVSPACE_ALLOWED_ROOTS).toBe('/private/empty')
+  })
 })

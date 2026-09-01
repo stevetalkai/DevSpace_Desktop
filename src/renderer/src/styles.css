@@ -95,6 +95,28 @@ h1 { margin-bottom: 8px; font: 500 clamp(34px, 4vw, 48px)/1.05 "Iowan Old Style"
 .folder-illustration { width: 62px; height: 47px; border: 1px solid rgba(28,36,32,.22); border-radius: 6px 11px 11px 11px; position: relative; background: #e4dac2; transform: rotate(-2deg); }
 .folder-illustration::before { content: ""; position: absolute; width: 27px; height: 9px; left: -1px; top: -8px; border: 1px solid rgba(28,36,32,.22); border-bottom: 0; border-radius: 6px 7px 0 0; background: #e4dac2; }
 .folder-illustration span { position: absolute; inset: 8px 10px 9px; border-radius: 4px; border: 1px solid rgba(28,36,32,.12); background: var(--paper); transform: rotate(5deg); }
+.inline-error { padding: 10px 20px; color: var(--rust); background: rgba(180,85,54,.07); border-bottom: 1px solid rgba(180,85,54,.13); font-size: 12px; }
+.project-list { padding: 0 20px; }
+.project-row { min-height: 74px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); }
+.project-row:last-child { border-bottom: 0; }
+.project-row__icon { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; color: #876e36; background: #ebe1c9; border-radius: 11px; }
+.project-row__identity { min-width: 0; flex: 1; }
+.project-row__title { display: flex; align-items: center; gap: 9px; }
+.project-row__title h3 { margin: 0; font-size: 13px; }
+.project-row__title span { padding: 2px 6px; color: var(--rust); background: rgba(180,85,54,.08); border-radius: 5px; font-size: 9px; font-weight: 700; }
+.project-row p { margin: 4px 0 0; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.icon-button { width: 34px; height: 34px; border: 0; display: grid; place-items: center; color: var(--muted); background: transparent; border-radius: 9px; cursor: pointer; }
+.icon-button:hover { color: var(--rust); background: rgba(180,85,54,.08); }
+.icon-button:disabled { opacity: .35; cursor: wait; }
+
+.dialog-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 30px; background: rgba(22,29,25,.42); backdrop-filter: blur(9px); }
+.risk-dialog { width: min(100%, 430px); padding: 26px; background: var(--paper); border: 1px solid rgba(28,36,32,.16); border-radius: 20px; box-shadow: 0 28px 70px rgba(18,24,20,.24); }
+.risk-dialog__icon { width: 42px; height: 42px; display: grid; place-items: center; color: var(--rust); background: rgba(180,85,54,.1); border-radius: 13px; }
+.risk-dialog h2 { margin: 18px 0 8px; font: 600 24px/1.2 "Iowan Old Style", Georgia, serif; }
+.risk-dialog p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+.risk-dialog code { display: block; padding: 11px; overflow: hidden; color: #4b514d; background: #ebe8e0; border-radius: 9px; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.risk-dialog__actions { margin-top: 22px; display: flex; justify-content: flex-end; gap: 9px; }
+.danger-button { padding: 9px 13px; border: 0; color: white; background: var(--rust); border-radius: 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
 
 .action-bar { margin-top: 14px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
 .text-button { justify-self: start; padding: 9px 0; color: var(--muted); background: none; font-size: 12px; }

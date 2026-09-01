@@ -15,6 +15,39 @@ describe('locale resources', () => {
     }
   });
 
+  it('includes project management messages in both languages', () => {
+    const requiredKeys = [
+      'app.project.added',
+      'app.project.removed',
+      'app.project.path',
+      'app.project.invalid_directory',
+      'app.project.read_failed',
+      'app.project.home_directory_risk_title',
+      'app.project.home_directory_risk_description',
+      'app.project.root_directory_risk_title',
+      'app.project.root_directory_risk_description',
+      'app.project.confirm_authorization',
+      'app.project.risk_title',
+      'app.project.risk_description',
+      'app.project.confirm_high_risk',
+      'app.project.unavailable',
+      'app.project.save_failed',
+      'app.project.candidate_expired',
+      'app.project.restart_notice',
+      'app.common.cancel',
+      'app.core.restart_required',
+      'app.project.count.one',
+      'app.project.count.other',
+      'app.settings.language.english_short',
+      'app.settings.language.chinese_short',
+    ];
+
+    for (const key of requiredKeys) {
+      expect(strings.en[key]).toBeTruthy();
+      expect(strings['zh-Hans'][key]).toBeTruthy();
+    }
+  });
+
   it('parses escaped .strings values', () => expect(parseStrings('"app.example" = "A\\nB";')['app.example']).toBe('A\nB'));
 
   it('uses Chinese for Chinese system languages and English otherwise', () => {

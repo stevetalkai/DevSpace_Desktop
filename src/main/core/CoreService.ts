@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { CoreStatus } from '../../shared/contracts'
+import { writeCoreConfiguration } from './CoreConfiguration'
 
 type SpawnCore = (cliPath: string, port: number, environment: NodeJS.ProcessEnv) => ChildProcess
 type ProbePort = (port: number, timeoutMs: number) => Promise<boolean>
@@ -16,7 +17,9 @@ export interface CoreServiceOptions {
   probePort?: ProbePort
   resolveCli?: () => string
   allowedRoots?: string[]
+  fallbackRoot?: string
   ownerToken?: string
+  configDirectory?: string
 }
 
 const initialStatus = (port: number): CoreStatus => ({
@@ -33,6 +36,9 @@ export class CoreService extends EventEmitter {
   private readonly probePort: ProbePort
   private readonly resolveCli: () => string
   private readonly environment: NodeJS.ProcessEnv
+  private readonly fallbackRoot: string
+  private readonly configDirectory: string | null
+  private allowedRoots: string[]
   private process: ChildProcess | null = null
   private status: CoreStatus
   private startPromise: Promise<CoreStatus> | null = null
@@ -45,17 +51,31 @@ export class CoreService extends EventEmitter {
     this.spawnCore = options.spawnCore ?? defaultSpawnCore
     this.probePort = options.probePort ?? probeLocalPort
     this.resolveCli = options.resolveCli ?? resolveCoreCli
+    this.fallbackRoot = options.fallbackRoot ?? options.allowedRoots?.[0] ?? process.cwd()
+    this.configDirectory = options.configDirectory ?? null
+    this.allowedRoots = options.allowedRoots ?? [this.fallbackRoot]
     this.environment = {
       HOST: '127.0.0.1',
       PORT: String(this.port),
-      DEVSPACE_ALLOWED_ROOTS: (options.allowedRoots ?? [process.cwd()]).join(','),
-      DEVSPACE_OAUTH_OWNER_TOKEN: options.ownerToken ?? randomBytes(32).toString('hex')
+      DEVSPACE_OAUTH_OWNER_TOKEN: options.ownerToken ?? randomBytes(32).toString('hex'),
+      ...(this.configDirectory
+        ? { DEVSPACE_CONFIG_DIR: this.configDirectory }
+        : { DEVSPACE_ALLOWED_ROOTS: this.allowedRoots.join(',') })
     }
     this.status = initialStatus(this.port)
   }
 
   getStatus(): CoreStatus {
     return { ...this.status }
+  }
+
+  async replaceAllowedRoots(roots: string[]): Promise<CoreStatus> {
+    if (this.status.phase === 'starting') await this.start()
+    const shouldRestart = this.status.phase === 'running'
+    if (shouldRestart) await this.stop()
+    this.allowedRoots = roots.length > 0 ? [...roots] : [this.fallbackRoot]
+    if (!this.configDirectory) this.environment.DEVSPACE_ALLOWED_ROOTS = this.allowedRoots.join(',')
+    return shouldRestart ? this.start() : this.getStatus()
   }
 
   async start(): Promise<CoreStatus> {
@@ -76,6 +96,7 @@ export class CoreService extends EventEmitter {
 
     let cliPath: string
     try {
+      if (this.configDirectory) await writeCoreConfiguration(this.configDirectory, this.port, this.allowedRoots)
       cliPath = this.resolveCli()
       this.process = this.spawnCore(cliPath, this.port, this.environment)
     } catch {

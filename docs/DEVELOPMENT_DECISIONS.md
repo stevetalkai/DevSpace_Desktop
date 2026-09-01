@@ -41,3 +41,12 @@ This document records implementation decisions made during autonomous developmen
 
 - The development machine currently uses Node.js 20.19.4, while package metadata for Electron 44 and DevSpace 1.0.8 asks for Node.js 22.19 or newer. Builds and tests currently pass, and the shipped app runs Core with Electron's embedded runtime. Development documentation should move to Node.js 22.19 before release.
 - A production-only `npm audit` reports five inherited findings from DevSpace's `@earendil-works/pi-coding-agent` dependency. The remaining affected `undici` version has no compatible fix in the current DevSpace release. Do not silently override this deep dependency; retest and upgrade when DevSpace publishes a compatible version.
+
+### Project authorization
+
+- Save approved projects in the Electron user-data directory at `config/projects.json`. Use a versioned JSON document, canonical real paths, atomic replacement, a `0700` parent directory, and a `0600` file.
+- A folder selected by the native directory picker receives a random authorization token that expires after ten minutes. The renderer can approve only this token, not submit an arbitrary filesystem path.
+- Treat the user home directory, a filesystem root, and a mounted-volume root as high risk. The renderer must show a second confirmation before saving one of these locations.
+- Restart Core automatically when approved roots change only if Core was already running. Removing the final project returns Core to the application-private empty workspace.
+- Keep the DevSpace CLI configuration separate from Desktop. Desktop writes a private Core configuration under its own user-data directory, preserving allowed roots as a JSON array so valid paths containing commas remain supported.
+- The current Core does not expose temporary per-request directory authorization. Do not show a non-functional “allow once” action in the first release; reconsider it when Core provides a supported permission event API.

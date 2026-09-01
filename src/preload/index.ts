@@ -7,6 +7,9 @@ const api: DesktopApi = {
   startCore: () => ipcRenderer.invoke(ipcChannels.startCore),
   stopCore: () => ipcRenderer.invoke(ipcChannels.stopCore),
   openChatGPT: () => ipcRenderer.invoke(ipcChannels.openChatGPT),
+  selectProject: () => ipcRenderer.invoke(ipcChannels.selectProject),
+  authorizeProject: (token, confirmHighRisk) => ipcRenderer.invoke(ipcChannels.authorizeProject, token, confirmHighRisk),
+  removeProject: (id) => ipcRenderer.invoke(ipcChannels.removeProject, id),
   subscribe: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot): void => listener(snapshot)
     ipcRenderer.on(ipcChannels.snapshotChanged, handler)

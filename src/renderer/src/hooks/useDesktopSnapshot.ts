@@ -5,6 +5,7 @@ const initialSnapshot: DesktopSnapshot = {
   core: { phase: 'stopped', port: 7676, startedAt: null, errorCode: null },
   tunnel: { phase: 'not-configured' },
   chatgpt: { phase: 'not-connected' },
+  projects: [],
   appVersion: '0.1.0'
 }
 export function useDesktopSnapshot(): {

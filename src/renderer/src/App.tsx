@@ -1,11 +1,20 @@
 import { useMemo, useState, type JSX } from 'react'
 import { Bot, ChevronRight, CircleEllipsis, FolderPlus, Languages, Link2, Power, Server } from 'lucide-react'
 import { StatusCard } from './components/StatusCard'
+import { ProjectList } from './components/ProjectList'
+import { RiskDialog } from './components/RiskDialog'
 import { useDesktopSnapshot } from './hooks/useDesktopSnapshot'
 import { resolveLocale, saveLocale, translate, type Locale } from './locales/locales'
-import type { ServicePhase } from '../../shared/contracts'
+import type { ProjectCandidate, ProjectMutationResult, ServicePhase } from '../../shared/contracts'
 
 type Tone = 'positive' | 'quiet' | 'negative' | 'working'
+
+const projectErrorKey: Record<Exclude<ProjectMutationResult, { ok: true }>['errorCode'], string> = {
+  candidate_expired: 'app.project.candidate_expired',
+  high_risk_confirmation_required: 'app.project.risk_description',
+  project_unavailable: 'app.project.unavailable',
+  project_save_failed: 'app.project.save_failed'
+}
 
 const coreStatusKey: Record<ServicePhase, string> = {
   stopped: 'app.service.stopped',
@@ -25,6 +34,9 @@ const coreTone: Record<ServicePhase, Tone> = {
 
 export function App(): JSX.Element {
   const [locale, setLocale] = useState<Locale>(() => resolveLocale({ storage: localStorage }))
+  const [projectCandidate, setProjectCandidate] = useState<ProjectCandidate | null>(null)
+  const [projectBusy, setProjectBusy] = useState(false)
+  const [projectError, setProjectError] = useState<string | null>(null)
   const { snapshot, pending, startCore, stopCore } = useDesktopSnapshot()
   const t = useMemo(() => (key: string, ...values: Array<string | number>) => translate(key, locale, ...values), [locale])
   const coreRunning = snapshot.core.phase === 'running'
@@ -33,6 +45,47 @@ export function App(): JSX.Element {
     saveLocale(next)
     document.documentElement.lang = next === 'zh-Hans' ? 'zh-CN' : 'en'
     setLocale(next)
+  }
+
+  const handleMutationResult = (result: ProjectMutationResult): boolean => {
+    if (result.ok) {
+      setProjectError(null)
+      return true
+    }
+    setProjectError(projectErrorKey[result.errorCode])
+    return false
+  }
+
+  const authorizeCandidate = async (candidate: ProjectCandidate, confirmHighRisk: boolean): Promise<void> => {
+    setProjectBusy(true)
+    try {
+      const result = await window.devspace.authorizeProject(candidate.token, confirmHighRisk)
+      if (handleMutationResult(result)) setProjectCandidate(null)
+    } finally {
+      setProjectBusy(false)
+    }
+  }
+
+  const chooseProject = async (): Promise<void> => {
+    setProjectBusy(true)
+    setProjectError(null)
+    try {
+      const candidate = await window.devspace.selectProject()
+      if (!candidate) return
+      if (candidate.highRisk) setProjectCandidate(candidate)
+      else await authorizeCandidate(candidate, false)
+    } finally {
+      setProjectBusy(false)
+    }
+  }
+
+  const removeProject = async (id: string): Promise<void> => {
+    setProjectBusy(true)
+    try {
+      handleMutationResult(await window.devspace.removeProject(id))
+    } finally {
+      setProjectBusy(false)
+    }
   }
 
   return (
@@ -44,9 +97,9 @@ export function App(): JSX.Element {
         </div>
         <div className="language-switch" aria-label={t('app.settings.language')}>
           <Languages size={15} />
-          <button className={locale === 'zh-Hans' ? 'active' : ''} onClick={() => changeLocale('zh-Hans')}>中</button>
+          <button className={locale === 'zh-Hans' ? 'active' : ''} onClick={() => changeLocale('zh-Hans')}>{t('app.settings.language.chinese_short')}</button>
           <span>/</span>
-          <button className={locale === 'en' ? 'active' : ''} onClick={() => changeLocale('en')}>EN</button>
+          <button className={locale === 'en' ? 'active' : ''} onClick={() => changeLocale('en')}>{t('app.settings.language.english_short')}</button>
         </div>
       </header>
 
@@ -97,18 +150,29 @@ export function App(): JSX.Element {
               <p className="eyebrow">{t('app.project.security_label')}</p>
               <h2>{t('app.project.title')}</h2>
             </div>
-            <button className="secondary-button" disabled>
+            <button className="secondary-button" disabled={projectBusy} onClick={() => void chooseProject()}>
               <FolderPlus size={17} />
               {t('app.project.add')}
             </button>
           </div>
-          <div className="empty-state">
-            <div className="folder-illustration" aria-hidden="true"><span /><i /></div>
-            <div>
-              <h3>{t('app.project.empty_title')}</h3>
-              <p>{t('app.project.empty_description')}</p>
+          {projectError && <div className="inline-error">{t(projectError)}</div>}
+          {snapshot.projects.length === 0 ? (
+            <div className="empty-state">
+              <div className="folder-illustration" aria-hidden="true"><span /><i /></div>
+              <div>
+                <h3>{t('app.project.empty_title')}</h3>
+                <p>{t('app.project.empty_description')}</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <ProjectList
+              projects={snapshot.projects}
+              removeLabel={t('app.project.remove')}
+              unavailableLabel={t('app.project.unavailable')}
+              disabled={projectBusy}
+              onRemove={(id) => void removeProject(id)}
+            />
+          )}
         </section>
 
         <footer className="action-bar">
@@ -123,6 +187,17 @@ export function App(): JSX.Element {
           </button>
         </footer>
       </main>
+      {projectCandidate && (
+        <RiskDialog
+          candidate={projectCandidate}
+          title={t('app.project.risk_title')}
+          description={t('app.project.risk_description')}
+          cancelLabel={t('app.common.cancel')}
+          confirmLabel={t('app.project.confirm_high_risk')}
+          onCancel={() => setProjectCandidate(null)}
+          onConfirm={() => void authorizeCandidate(projectCandidate, true)}
+        />
+      )}
     </div>
   )
 }
