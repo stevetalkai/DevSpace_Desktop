@@ -75,6 +75,8 @@ const expectedProject = process.env.DEVSPACE_SMOKE_EXPECT_PROJECT
 if (expectedProject && !initialText.includes(expectedProject)) {
   throw new Error(`Expected project was not rendered: ${expectedProject}`)
 }
+const expectedTunnel = process.env.DEVSPACE_SMOKE_EXPECT_TUNNEL
+if (expectedTunnel) await waitForText([expectedTunnel])
 if (initialText.includes('Stop service') || initialText.includes('停止服务')) {
   await evaluate("document.querySelector('.service-control')?.click()")
   initialText = await waitForText(['Stopped', '已停止'])

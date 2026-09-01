@@ -7,15 +7,32 @@ export interface CoreStatus {
   errorCode: string | null
 }
 
-export type TunnelPhase = 'not-configured' | 'checking' | 'connected' | 'failed'
+export type TunnelPhase =
+  | 'checking'
+  | 'cli-missing'
+  | 'daemon-unavailable'
+  | 'not-logged-in'
+  | 'offline'
+  | 'ready'
+  | 'starting'
+  | 'connected'
+  | 'stopping'
+  | 'failed'
 export type ChatGPTPhase = 'not-connected' | 'waiting-request' | 'waiting-authorization' | 'connected' | 'stale'
 
 export interface DesktopSnapshot {
   core: CoreStatus
-  tunnel: { phase: TunnelPhase }
+  tunnel: TunnelStatus
   chatgpt: { phase: ChatGPTPhase }
   projects: ProjectSummary[]
   appVersion: string
+}
+
+export interface TunnelStatus {
+  phase: TunnelPhase
+  publicUrl: string | null
+  mcpUrl: string | null
+  errorCode: string | null
 }
 
 export interface ProjectSummary {
@@ -46,6 +63,11 @@ export interface DesktopApi {
   selectProject(): Promise<ProjectCandidate | null>
   authorizeProject(token: string, confirmHighRisk: boolean): Promise<ProjectMutationResult>
   removeProject(id: string): Promise<ProjectMutationResult>
+  detectTunnel(): Promise<TunnelStatus>
+  startTunnel(): Promise<TunnelStatus>
+  stopTunnel(): Promise<TunnelStatus>
+  copyMcpUrl(): Promise<boolean>
+  openTailscaleDownload(): Promise<void>
 }
 
 export const ipcChannels = {
@@ -56,5 +78,10 @@ export const ipcChannels = {
   openChatGPT: 'desktop:open-chatgpt',
   selectProject: 'projects:select',
   authorizeProject: 'projects:authorize',
-  removeProject: 'projects:remove'
+  removeProject: 'projects:remove',
+  detectTunnel: 'tunnel:detect',
+  startTunnel: 'tunnel:start',
+  stopTunnel: 'tunnel:stop',
+  copyMcpUrl: 'tunnel:copy-mcp-url',
+  openTailscaleDownload: 'tunnel:open-download'
 } as const

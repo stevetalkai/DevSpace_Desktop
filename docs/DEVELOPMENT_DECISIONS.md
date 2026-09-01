@@ -50,3 +50,13 @@ This document records implementation decisions made during autonomous developmen
 - Restart Core automatically when approved roots change only if Core was already running. Removing the final project returns Core to the application-private empty workspace.
 - Keep the DevSpace CLI configuration separate from Desktop. Desktop writes a private Core configuration under its own user-data directory, preserving allowed roots as a JSON array so valid paths containing commas remain supported.
 - The current Core does not expose temporary per-request directory authorization. Do not show a non-functional “allow once” action in the first release; reconsider it when Core provides a supported permission event API.
+
+### Tailscale Funnel
+
+- Keep Tailscale behind the generic `TunnelProvider` interface. The renderer never executes Tailscale commands and does not depend on CLI output shapes.
+- Run every command with `execFile` and a separate argument array. Start with `tailscale funnel --bg --yes <port>`, then read status again before reporting success.
+- Stop only the Funnel configuration for the Core port with `tailscale funnel --bg --yes <port> off`. Never call `tailscale funnel reset`, because reset can remove unrelated Funnel settings owned by the user.
+- Prefer JSON status output, but keep a conservative text parser for older supported clients. Reject ambiguous output instead of guessing a public address.
+- Display Tailscale Funnel's Beta status persistently in the connection panel and explain that enabling it makes the MCP endpoint publicly reachable.
+- Search the common Homebrew and Windows installation paths before falling back to `PATH`, because apps started from Finder often receive a limited shell path.
+- Local read-only verification used Tailscale 1.98.5. The CLI was present while its background service was not running; the app correctly reported that exact state. Starting a real public Funnel was intentionally not attempted without a logged-in test Tailnet. Provider tests use injected command results for all start, stop, URL, login, offline, timeout, and malformed-output cases.

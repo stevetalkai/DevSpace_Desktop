@@ -3,9 +3,10 @@ import { Bot, ChevronRight, CircleEllipsis, FolderPlus, Languages, Link2, Power,
 import { StatusCard } from './components/StatusCard'
 import { ProjectList } from './components/ProjectList'
 import { RiskDialog } from './components/RiskDialog'
+import { ConnectionPanel } from './components/ConnectionPanel'
 import { useDesktopSnapshot } from './hooks/useDesktopSnapshot'
 import { resolveLocale, saveLocale, translate, type Locale } from './locales/locales'
-import type { ProjectCandidate, ProjectMutationResult, ServicePhase } from '../../shared/contracts'
+import type { ProjectCandidate, ProjectMutationResult, ServicePhase, TunnelPhase } from '../../shared/contracts'
 
 type Tone = 'positive' | 'quiet' | 'negative' | 'working'
 
@@ -32,11 +33,39 @@ const coreTone: Record<ServicePhase, Tone> = {
   failed: 'negative'
 }
 
+const tunnelStatusKey: Record<TunnelPhase, string> = {
+  checking: 'app.tailscale.status.checking',
+  'cli-missing': 'app.tailscale.status.not_installed',
+  'daemon-unavailable': 'app.tailscale.status.daemon_not_running',
+  'not-logged-in': 'app.tailscale.status.not_logged_in',
+  offline: 'app.tailscale.status.offline',
+  ready: 'app.tailscale.status.online_not_enabled',
+  starting: 'app.tailscale.status.enabling',
+  connected: 'app.tailscale.status.connected',
+  stopping: 'app.tailscale.status.checking',
+  failed: 'app.tailscale.status.failed'
+}
+
+const tunnelTone: Record<TunnelPhase, Tone> = {
+  checking: 'working',
+  'cli-missing': 'negative',
+  'daemon-unavailable': 'negative',
+  'not-logged-in': 'negative',
+  offline: 'negative',
+  ready: 'quiet',
+  starting: 'working',
+  connected: 'positive',
+  stopping: 'working',
+  failed: 'negative'
+}
+
 export function App(): JSX.Element {
   const [locale, setLocale] = useState<Locale>(() => resolveLocale({ storage: localStorage }))
   const [projectCandidate, setProjectCandidate] = useState<ProjectCandidate | null>(null)
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
+  const [tunnelPending, setTunnelPending] = useState(false)
+  const [addressCopied, setAddressCopied] = useState(false)
   const { snapshot, pending, startCore, stopCore } = useDesktopSnapshot()
   const t = useMemo(() => (key: string, ...values: Array<string | number>) => translate(key, locale, ...values), [locale])
   const coreRunning = snapshot.core.phase === 'running'
@@ -88,6 +117,23 @@ export function App(): JSX.Element {
     }
   }
 
+  const runTunnel = async (operation: () => Promise<unknown>): Promise<void> => {
+    setTunnelPending(true)
+    setAddressCopied(false)
+    try {
+      await operation()
+    } finally {
+      setTunnelPending(false)
+    }
+  }
+
+  const copyMcpUrl = async (): Promise<void> => {
+    if (await window.devspace.copyMcpUrl()) {
+      setAddressCopied(true)
+      window.setTimeout(() => setAddressCopied(false), 2_000)
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -132,8 +178,8 @@ export function App(): JSX.Element {
             icon={Link2}
             title={t('app.status.tailscale.title')}
             description={t('app.status.tailscale.description')}
-            status={t('app.status.not_configured')}
-            tone="quiet"
+            status={t(tunnelStatusKey[snapshot.tunnel.phase])}
+            tone={tunnelTone[snapshot.tunnel.phase]}
           />
           <StatusCard
             icon={Bot}
@@ -143,6 +189,19 @@ export function App(): JSX.Element {
             tone="quiet"
           />
         </section>
+
+        <ConnectionPanel
+          status={snapshot.tunnel}
+          coreRunning={coreRunning}
+          pending={tunnelPending}
+          copied={addressCopied}
+          t={t}
+          onDetect={() => void runTunnel(() => window.devspace.detectTunnel())}
+          onStart={() => void runTunnel(() => window.devspace.startTunnel())}
+          onStop={() => void runTunnel(() => window.devspace.stopTunnel())}
+          onCopy={() => void copyMcpUrl()}
+          onInstall={() => void window.devspace.openTailscaleDownload()}
+        />
 
         <section className="workspace-panel">
           <div className="section-heading">

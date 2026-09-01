@@ -10,6 +10,11 @@ const api: DesktopApi = {
   selectProject: () => ipcRenderer.invoke(ipcChannels.selectProject),
   authorizeProject: (token, confirmHighRisk) => ipcRenderer.invoke(ipcChannels.authorizeProject, token, confirmHighRisk),
   removeProject: (id) => ipcRenderer.invoke(ipcChannels.removeProject, id),
+  detectTunnel: () => ipcRenderer.invoke(ipcChannels.detectTunnel),
+  startTunnel: () => ipcRenderer.invoke(ipcChannels.startTunnel),
+  stopTunnel: () => ipcRenderer.invoke(ipcChannels.stopTunnel),
+  copyMcpUrl: () => ipcRenderer.invoke(ipcChannels.copyMcpUrl),
+  openTailscaleDownload: () => ipcRenderer.invoke(ipcChannels.openTailscaleDownload),
   subscribe: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot): void => listener(snapshot)
     ipcRenderer.on(ipcChannels.snapshotChanged, handler)

@@ -3,7 +3,7 @@ import type { DesktopSnapshot } from '../../../shared/contracts'
 
 const initialSnapshot: DesktopSnapshot = {
   core: { phase: 'stopped', port: 7676, startedAt: null, errorCode: null },
-  tunnel: { phase: 'not-configured' },
+  tunnel: { phase: 'checking', publicUrl: null, mcpUrl: null, errorCode: null },
   chatgpt: { phase: 'not-connected' },
   projects: [],
   appVersion: '0.1.0'

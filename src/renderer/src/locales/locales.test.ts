@@ -48,6 +48,34 @@ describe('locale resources', () => {
     }
   });
 
+  it('includes Tailscale and Funnel messages in both languages', () => {
+    const requiredKeys = [
+      'app.tailscale.status.checking',
+      'app.tailscale.status.not_installed',
+      'app.tailscale.status.daemon_not_running',
+      'app.tailscale.status.not_logged_in',
+      'app.tailscale.status.offline',
+      'app.tailscale.status.online_not_enabled',
+      'app.tailscale.status.enabling',
+      'app.tailscale.status.connected',
+      'app.tailscale.status.failed',
+      'app.tailscale.login',
+      'app.tailscale.install',
+      'app.tailscale.enable_connection',
+      'app.tailscale.stop_connection',
+      'app.tailscale.retry',
+      'app.tailscale.mcp_address',
+      'app.tailscale.copy_address',
+      'app.tailscale.beta_risk_title',
+      'app.tailscale.beta_risk_description',
+    ];
+
+    for (const key of requiredKeys) {
+      expect(strings.en[key]).toBeTruthy();
+      expect(strings['zh-Hans'][key]).toBeTruthy();
+    }
+  });
+
   it('parses escaped .strings values', () => expect(parseStrings('"app.example" = "A\\nB";')['app.example']).toBe('A\nB'));
 
   it('uses Chinese for Chinese system languages and English otherwise', () => {

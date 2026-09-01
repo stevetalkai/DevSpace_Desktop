@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import type { OpenDialogOptions } from 'electron'
 import { basename, join } from 'node:path'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
@@ -6,12 +6,17 @@ import { realpath } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { CoreService } from './core/CoreService'
 import { isHighRiskProjectPath, ProjectStore } from './projects/ProjectStore'
+import { TailscaleTunnelProvider, TunnelController } from './tunnel'
 import type { DesktopSnapshot, ProjectCandidate, ProjectMutationResult, ProjectSummary } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 
 let coreService: CoreService | null = null
 let projectStore: ProjectStore | null = null
 let mainWindow: BrowserWindow | null = null
+const tunnelController = new TunnelController(
+  new TailscaleTunnelProvider({ executablePath: findTailscaleExecutable() }),
+  () => service().getStatus()
+)
 const pendingProjects = new Map<string, { path: string; highRisk: boolean; expiresAt: number }>()
 
 function service(): CoreService {
@@ -45,7 +50,7 @@ function isAvailableDirectory(path: string): boolean {
 function snapshot(): DesktopSnapshot {
   return {
     core: service().getStatus(),
-    tunnel: { phase: 'not-configured' },
+    tunnel: tunnelController.getStatus(),
     chatgpt: { phase: 'not-connected' },
     projects: projectSummaries(),
     appVersion: app.getVersion()
@@ -91,6 +96,18 @@ function registerIpc(): void {
   ipcMain.handle(ipcChannels.stopCore, async () => service().stop())
   ipcMain.handle(ipcChannels.openChatGPT, async () => {
     await shell.openExternal('https://chatgpt.com/')
+  })
+  ipcMain.handle(ipcChannels.detectTunnel, () => tunnelController.detect())
+  ipcMain.handle(ipcChannels.startTunnel, () => tunnelController.start())
+  ipcMain.handle(ipcChannels.stopTunnel, () => tunnelController.stop())
+  ipcMain.handle(ipcChannels.copyMcpUrl, (): boolean => {
+    const mcpUrl = tunnelController.getStatus().mcpUrl
+    if (!mcpUrl) return false
+    clipboard.writeText(mcpUrl)
+    return true
+  })
+  ipcMain.handle(ipcChannels.openTailscaleDownload, async () => {
+    await shell.openExternal('https://tailscale.com/download')
   })
   ipcMain.handle(ipcChannels.selectProject, async (): Promise<ProjectCandidate | null> => {
     const options: OpenDialogOptions = {
@@ -147,6 +164,13 @@ function registerIpc(): void {
   })
 }
 
+function findTailscaleExecutable(): string {
+  const candidates = process.platform === 'win32'
+    ? ['C:\\Program Files\\Tailscale\\tailscale.exe']
+    : ['/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale']
+  return candidates.find(existsSync) ?? 'tailscale'
+}
+
 async function applyProjectRoots(): Promise<void> {
   const availableRoots = projectSummaries().filter((project) => project.available).map((project) => project.path)
   await service().replaceAllowedRoots(availableRoots)
@@ -166,8 +190,10 @@ app.whenReady().then(() => {
       configDirectory: join(app.getPath('userData'), 'core')
     })
     coreService.on('status', broadcastSnapshot)
+    tunnelController.on('status', broadcastSnapshot)
     registerIpc()
     createWindow()
+    void tunnelController.detect()
   })
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
