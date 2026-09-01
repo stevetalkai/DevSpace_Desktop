@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron'
 import type { OpenDialogOptions } from 'electron'
 import { basename, join } from 'node:path'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
@@ -7,15 +7,20 @@ import { randomUUID } from 'node:crypto'
 import { CoreService } from './core/CoreService'
 import { isHighRiskProjectPath, ProjectStore } from './projects/ProjectStore'
 import { TailscaleTunnelProvider, TunnelController } from './tunnel'
+import { ChatGPTConnectionMonitor, type CoreStructuredEvent } from './chatgpt/ChatGPTConnectionMonitor'
+import { OwnerTokenStore } from './security/OwnerTokenStore'
 import type { DesktopSnapshot, ProjectCandidate, ProjectMutationResult, ProjectSummary } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 
 let coreService: CoreService | null = null
 let projectStore: ProjectStore | null = null
 let mainWindow: BrowserWindow | null = null
+let ownerToken: string | null = null
+const chatgptMonitor = new ChatGPTConnectionMonitor()
 const tunnelController = new TunnelController(
   new TailscaleTunnelProvider({ executablePath: findTailscaleExecutable() }),
-  () => service().getStatus()
+  () => service().getStatus(),
+  async (publicUrl) => { await service().replacePublicBaseUrl(publicUrl) }
 )
 const pendingProjects = new Map<string, { path: string; highRisk: boolean; expiresAt: number }>()
 
@@ -51,13 +56,14 @@ function snapshot(): DesktopSnapshot {
   return {
     core: service().getStatus(),
     tunnel: tunnelController.getStatus(),
-    chatgpt: { phase: 'not-connected' },
+    chatgpt: chatgptMonitor.getStatus(),
     projects: projectSummaries(),
     appVersion: app.getVersion()
   }
 }
 
 function broadcastSnapshot(): void {
+  chatgptMonitor.setPrerequisites(service().getStatus().phase === 'running' && tunnelController.getStatus().phase === 'connected')
   mainWindow?.webContents.send(ipcChannels.snapshotChanged, snapshot())
 }
 
@@ -95,7 +101,7 @@ function registerIpc(): void {
   ipcMain.handle(ipcChannels.startCore, async () => service().start())
   ipcMain.handle(ipcChannels.stopCore, async () => service().stop())
   ipcMain.handle(ipcChannels.openChatGPT, async () => {
-    await shell.openExternal('https://chatgpt.com/')
+    await shell.openExternal('https://chatgpt.com/plugins')
   })
   ipcMain.handle(ipcChannels.detectTunnel, () => tunnelController.detect())
   ipcMain.handle(ipcChannels.startTunnel, () => tunnelController.start())
@@ -106,6 +112,12 @@ function registerIpc(): void {
     clipboard.writeText(mcpUrl)
     return true
   })
+  ipcMain.handle(ipcChannels.copyOwnerPassword, (): boolean => {
+    if (!ownerToken) return false
+    clipboard.writeText(ownerToken)
+    return true
+  })
+  ipcMain.handle(ipcChannels.beginChatGPTSetup, () => chatgptMonitor.beginSetup())
   ipcMain.handle(ipcChannels.openTailscaleDownload, async () => {
     await shell.openExternal('https://tailscale.com/download')
   })
@@ -176,9 +188,23 @@ async function applyProjectRoots(): Promise<void> {
   await service().replaceAllowedRoots(availableRoots)
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const emptyWorkspace = join(app.getPath('userData'), 'empty-workspace')
   mkdirSync(emptyWorkspace, { recursive: true, mode: 0o700 })
+  try {
+    const tokenStore = new OwnerTokenStore(join(app.getPath('userData'), 'security', 'owner-token.enc'), safeStorage)
+    ownerToken = await tokenStore.getOrCreate()
+  } catch {
+    const chinese = app.getLocale().toLowerCase().startsWith('zh')
+    dialog.showErrorBox(
+      chinese ? '无法安全保存密码' : 'Cannot securely store the password',
+      chinese
+        ? '系统加密存储不可用。DevSpace 未启动，也没有把密码保存为明文。'
+        : 'System encryption is unavailable. DevSpace did not start and did not save the password as plain text.'
+    )
+    app.quit()
+    return
+  }
   projectStore = new ProjectStore(join(app.getPath('userData'), 'config', 'projects.json'))
   void projectStore.load().then((projectSnapshot) => {
     const availableRoots = projectSnapshot.projects
@@ -187,10 +213,13 @@ app.whenReady().then(() => {
     coreService = new CoreService({
       allowedRoots: availableRoots.length > 0 ? availableRoots : [emptyWorkspace],
       fallbackRoot: emptyWorkspace,
-      configDirectory: join(app.getPath('userData'), 'core')
+      configDirectory: join(app.getPath('userData'), 'core'),
+      ownerToken: ownerToken ?? undefined
     })
     coreService.on('status', broadcastSnapshot)
+    coreService.on('core-event', (event: CoreStructuredEvent) => chatgptMonitor.accept(event))
     tunnelController.on('status', broadcastSnapshot)
+    chatgptMonitor.on('status', broadcastSnapshot)
     registerIpc()
     createWindow()
     void tunnelController.detect()

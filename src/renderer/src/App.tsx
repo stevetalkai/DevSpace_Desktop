@@ -4,9 +4,10 @@ import { StatusCard } from './components/StatusCard'
 import { ProjectList } from './components/ProjectList'
 import { RiskDialog } from './components/RiskDialog'
 import { ConnectionPanel } from './components/ConnectionPanel'
+import { ChatGPTWizard } from './components/ChatGPTWizard'
 import { useDesktopSnapshot } from './hooks/useDesktopSnapshot'
 import { resolveLocale, saveLocale, translate, type Locale } from './locales/locales'
-import type { ProjectCandidate, ProjectMutationResult, ServicePhase, TunnelPhase } from '../../shared/contracts'
+import type { ChatGPTPhase, ProjectCandidate, ProjectMutationResult, ServicePhase, TunnelPhase } from '../../shared/contracts'
 
 type Tone = 'positive' | 'quiet' | 'negative' | 'working'
 
@@ -59,6 +60,22 @@ const tunnelTone: Record<TunnelPhase, Tone> = {
   failed: 'negative'
 }
 
+const chatgptStatusKey: Record<ChatGPTPhase, string> = {
+  'not-connected': 'app.chatgpt.not_connected',
+  'waiting-request': 'app.chatgpt.wizard.status.waiting_for_request',
+  'waiting-authorization': 'app.chatgpt.wizard.status.waiting_for_authorization',
+  connected: 'app.chatgpt.connected',
+  stale: 'app.chatgpt.wizard.status.expired'
+}
+
+const chatgptTone: Record<ChatGPTPhase, Tone> = {
+  'not-connected': 'quiet',
+  'waiting-request': 'working',
+  'waiting-authorization': 'working',
+  connected: 'positive',
+  stale: 'negative'
+}
+
 export function App(): JSX.Element {
   const [locale, setLocale] = useState<Locale>(() => resolveLocale({ storage: localStorage }))
   const [projectCandidate, setProjectCandidate] = useState<ProjectCandidate | null>(null)
@@ -66,9 +83,11 @@ export function App(): JSX.Element {
   const [projectError, setProjectError] = useState<string | null>(null)
   const [tunnelPending, setTunnelPending] = useState(false)
   const [addressCopied, setAddressCopied] = useState(false)
+  const [chatgptWizardOpen, setChatgptWizardOpen] = useState(false)
   const { snapshot, pending, startCore, stopCore } = useDesktopSnapshot()
   const t = useMemo(() => (key: string, ...values: Array<string | number>) => translate(key, locale, ...values), [locale])
   const coreRunning = snapshot.core.phase === 'running'
+  const chatgptReady = coreRunning && snapshot.tunnel.phase === 'connected' && Boolean(snapshot.tunnel.mcpUrl)
 
   const changeLocale = (next: Locale): void => {
     saveLocale(next)
@@ -134,6 +153,12 @@ export function App(): JSX.Element {
     }
   }
 
+  const openChatGPTWizard = async (): Promise<void> => {
+    if (!chatgptReady) return
+    await window.devspace.beginChatGPTSetup()
+    setChatgptWizardOpen(true)
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -185,8 +210,8 @@ export function App(): JSX.Element {
             icon={Bot}
             title={t('app.status.chatgpt.title')}
             description={t('app.status.chatgpt.description')}
-            status={t('app.chatgpt.not_connected')}
-            tone="quiet"
+            status={t(chatgptStatusKey[snapshot.chatgpt.phase])}
+            tone={chatgptTone[snapshot.chatgpt.phase]}
           />
         </section>
 
@@ -240,7 +265,7 @@ export function App(): JSX.Element {
             {t('app.advanced.title')}
           </button>
           <div className="version">v{snapshot.appVersion} · {t('app.footer.local_first')}</div>
-          <button className="primary-button" disabled>
+          <button className="primary-button" disabled={!chatgptReady} onClick={() => void openChatGPTWizard()}>
             {t('app.chatgpt.open')}
             <ChevronRight size={18} />
           </button>
@@ -255,6 +280,14 @@ export function App(): JSX.Element {
           confirmLabel={t('app.project.confirm_high_risk')}
           onCancel={() => setProjectCandidate(null)}
           onConfirm={() => void authorizeCandidate(projectCandidate, true)}
+        />
+      )}
+      {chatgptWizardOpen && snapshot.tunnel.mcpUrl && (
+        <ChatGPTWizard
+          mcpUrl={snapshot.tunnel.mcpUrl}
+          status={snapshot.chatgpt}
+          t={t}
+          onClose={() => setChatgptWizardOpen(false)}
         />
       )}
     </div>

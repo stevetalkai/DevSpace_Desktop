@@ -8,7 +8,8 @@ export class TunnelController extends EventEmitter {
 
   constructor(
     private readonly provider: TunnelProvider,
-    private readonly getCoreStatus: () => CoreStatus
+    private readonly getCoreStatus: () => CoreStatus,
+    private readonly onPublicUrlChanged: (publicUrl: string | null) => Promise<void> = async () => undefined
   ) {
     super()
   }
@@ -20,8 +21,13 @@ export class TunnelController extends EventEmitter {
   async detect(): Promise<TunnelStatus> {
     this.update({ phase: 'checking', publicUrl: null, mcpUrl: null, errorCode: null })
     const environment = await this.provider.detect()
-    if (environment.errorCode) return this.update(fromEnvironment(environment))
-    return this.update(fromProviderStatus(await this.provider.status()))
+    if (environment.errorCode) {
+      await this.onPublicUrlChanged(null)
+      return this.update(fromEnvironment(environment))
+    }
+    const status = fromProviderStatus(await this.provider.status())
+    await this.onPublicUrlChanged(status.publicUrl)
+    return this.update(status)
   }
 
   async start(): Promise<TunnelStatus> {
@@ -33,7 +39,9 @@ export class TunnelController extends EventEmitter {
     this.update({ phase: 'starting', publicUrl: null, mcpUrl: null, errorCode: null })
     try {
       const info = await this.provider.start(core.port)
-      return this.update(connected(info.publicUrl))
+      const status = connected(info.publicUrl)
+      await this.onPublicUrlChanged(status.publicUrl)
+      return this.update(status)
     } catch (error) {
       return this.update(fromError(error instanceof TunnelProviderError ? error.code : 'funnel_failed'))
     }
@@ -43,6 +51,7 @@ export class TunnelController extends EventEmitter {
     this.update({ ...this.status, phase: 'stopping', errorCode: null })
     try {
       await this.provider.stop(this.getCoreStatus().port)
+      await this.onPublicUrlChanged(null)
       return this.update({ phase: 'ready', publicUrl: null, mcpUrl: null, errorCode: null })
     } catch (error) {
       return this.update(fromError(error instanceof TunnelProviderError ? error.code : 'funnel_failed'))

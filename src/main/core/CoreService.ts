@@ -1,20 +1,21 @@
 import { EventEmitter } from 'node:events'
-import { createConnection } from 'node:net'
 import { randomBytes } from 'node:crypto'
+import { request } from 'node:http'
 import { dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { CoreStatus } from '../../shared/contracts'
 import { writeCoreConfiguration } from './CoreConfiguration'
+import { parseCoreStructuredEvent } from '../chatgpt/ChatGPTConnectionMonitor'
 
 type SpawnCore = (cliPath: string, port: number, environment: NodeJS.ProcessEnv) => ChildProcess
-type ProbePort = (port: number, timeoutMs: number) => Promise<boolean>
+type ProbeHealth = (port: number, timeoutMs: number) => Promise<boolean>
 
 export interface CoreServiceOptions {
   port?: number
   startupTimeoutMs?: number
   spawnCore?: SpawnCore
-  probePort?: ProbePort
+  probePort?: ProbeHealth
   resolveCli?: () => string
   allowedRoots?: string[]
   fallbackRoot?: string
@@ -33,12 +34,13 @@ export class CoreService extends EventEmitter {
   private readonly port: number
   private readonly startupTimeoutMs: number
   private readonly spawnCore: SpawnCore
-  private readonly probePort: ProbePort
+  private readonly probePort: ProbeHealth
   private readonly resolveCli: () => string
   private readonly environment: NodeJS.ProcessEnv
   private readonly fallbackRoot: string
   private readonly configDirectory: string | null
   private allowedRoots: string[]
+  private publicBaseUrl: string | null = null
   private process: ChildProcess | null = null
   private status: CoreStatus
   private startPromise: Promise<CoreStatus> | null = null
@@ -57,6 +59,9 @@ export class CoreService extends EventEmitter {
     this.environment = {
       HOST: '127.0.0.1',
       PORT: String(this.port),
+      DEVSPACE_LOG_LEVEL: 'debug',
+      DEVSPACE_LOG_FORMAT: 'json',
+      DEVSPACE_LOG_REQUESTS: '1',
       DEVSPACE_OAUTH_OWNER_TOKEN: options.ownerToken ?? randomBytes(32).toString('hex'),
       ...(this.configDirectory
         ? { DEVSPACE_CONFIG_DIR: this.configDirectory }
@@ -78,6 +83,15 @@ export class CoreService extends EventEmitter {
     return shouldRestart ? this.start() : this.getStatus()
   }
 
+  async replacePublicBaseUrl(publicBaseUrl: string | null): Promise<CoreStatus> {
+    if (this.publicBaseUrl === publicBaseUrl) return this.getStatus()
+    if (this.status.phase === 'starting') await this.start()
+    const shouldRestart = this.status.phase === 'running'
+    if (shouldRestart) await this.stop()
+    this.publicBaseUrl = publicBaseUrl
+    return shouldRestart ? this.start() : this.getStatus()
+  }
+
   async start(): Promise<CoreStatus> {
     if (this.status.phase === 'running') return this.getStatus()
     if (this.startPromise) return this.startPromise
@@ -96,9 +110,11 @@ export class CoreService extends EventEmitter {
 
     let cliPath: string
     try {
-      if (this.configDirectory) await writeCoreConfiguration(this.configDirectory, this.port, this.allowedRoots)
+      if (this.configDirectory) await writeCoreConfiguration(this.configDirectory, this.port, this.allowedRoots, this.publicBaseUrl)
       cliPath = this.resolveCli()
       this.process = this.spawnCore(cliPath, this.port, this.environment)
+      this.observeCoreOutput(this.process.stdout)
+      this.observeCoreOutput(this.process.stderr)
     } catch {
       return this.fail('core_launch_failed')
     }
@@ -157,6 +173,20 @@ export class CoreService extends EventEmitter {
     return this.getStatus()
   }
 
+  private observeCoreOutput(stream: NodeJS.ReadableStream | null): void {
+    if (!stream) return
+    let remainder = ''
+    stream.on('data', (chunk: Buffer | string) => {
+      remainder += chunk.toString()
+      const lines = remainder.split(/\r?\n/u)
+      remainder = lines.pop() ?? ''
+      for (const line of lines) {
+        const event = parseCoreStructuredEvent(line)
+        if (event) this.emit('core-event', event)
+      }
+    })
+  }
+
   private update(patch: Partial<CoreStatus>): void {
     this.status = { ...this.status, ...patch }
     this.emit('status', this.getStatus())
@@ -182,15 +212,23 @@ function defaultSpawnCore(cliPath: string, _port: number, environment: NodeJS.Pr
 
 function probeLocalPort(port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = createConnection({ host: '127.0.0.1', port })
-    const finish = (result: boolean): void => {
-      socket.destroy()
-      resolve(result)
-    }
-    socket.setTimeout(timeoutMs)
-    socket.once('connect', () => finish(true))
-    socket.once('timeout', () => finish(false))
-    socket.once('error', () => finish(false))
+    const healthRequest = request({ host: '127.0.0.1', port, path: '/healthz', method: 'GET', headers: { 'User-Agent': 'DevSpace-Desktop-Health' } })
+    let body = ''
+    healthRequest.setTimeout(timeoutMs, () => healthRequest.destroy())
+    healthRequest.on('response', (response) => {
+      response.setEncoding('utf8')
+      response.on('data', (chunk: string) => { body += chunk })
+      response.on('end', () => {
+        try {
+          const value = JSON.parse(body) as Record<string, unknown>
+          resolve(response.statusCode === 200 && value.ok === true && value.name === 'devspace')
+        } catch {
+          resolve(false)
+        }
+      })
+    })
+    healthRequest.on('error', () => resolve(false))
+    healthRequest.end()
   })
 }
 

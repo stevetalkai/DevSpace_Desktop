@@ -23,9 +23,14 @@ export type ChatGPTPhase = 'not-connected' | 'waiting-request' | 'waiting-author
 export interface DesktopSnapshot {
   core: CoreStatus
   tunnel: TunnelStatus
-  chatgpt: { phase: ChatGPTPhase }
+  chatgpt: ChatGPTStatus
   projects: ProjectSummary[]
   appVersion: string
+}
+
+export interface ChatGPTStatus {
+  phase: ChatGPTPhase
+  lastConnectedAt: string | null
 }
 
 export interface TunnelStatus {
@@ -67,6 +72,8 @@ export interface DesktopApi {
   startTunnel(): Promise<TunnelStatus>
   stopTunnel(): Promise<TunnelStatus>
   copyMcpUrl(): Promise<boolean>
+  copyOwnerPassword(): Promise<boolean>
+  beginChatGPTSetup(): Promise<ChatGPTStatus>
   openTailscaleDownload(): Promise<void>
 }
 
@@ -83,5 +90,7 @@ export const ipcChannels = {
   startTunnel: 'tunnel:start',
   stopTunnel: 'tunnel:stop',
   copyMcpUrl: 'tunnel:copy-mcp-url',
+  copyOwnerPassword: 'chatgpt:copy-owner-password',
+  beginChatGPTSetup: 'chatgpt:begin-setup',
   openTailscaleDownload: 'tunnel:open-download'
 } as const

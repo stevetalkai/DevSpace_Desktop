@@ -76,6 +76,33 @@ describe('locale resources', () => {
     }
   });
 
+  it('includes ChatGPT connection wizard messages in both languages', () => {
+    const requiredKeys = [
+      'app.chatgpt.wizard.title',
+      'app.chatgpt.wizard.step.copy_address',
+      'app.chatgpt.wizard.step.open_settings',
+      'app.chatgpt.wizard.step.authorize',
+      'app.chatgpt.wizard.status.preparing',
+      'app.chatgpt.wizard.status.waiting_for_request',
+      'app.chatgpt.wizard.status.waiting_for_authorization',
+      'app.chatgpt.wizard.status.connected',
+      'app.chatgpt.wizard.status.recent_connection',
+      'app.chatgpt.wizard.status.expired',
+      'app.chatgpt.wizard.copy_address',
+      'app.chatgpt.wizard.copy_owner_password',
+      'app.chatgpt.wizard.password_copied',
+      'app.chatgpt.wizard.open_chatgpt',
+      'app.chatgpt.wizard.require_service_and_connection',
+      'app.chatgpt.wizard.password_security_note',
+      'app.chatgpt.wizard.complete',
+    ];
+
+    for (const key of requiredKeys) {
+      expect(strings.en[key]).toBeTruthy();
+      expect(strings['zh-Hans'][key]).toBeTruthy();
+    }
+  });
+
   it('parses escaped .strings values', () => expect(parseStrings('"app.example" = "A\\nB";')['app.example']).toBe('A\nB'));
 
   it('uses Chinese for Chinese system languages and English otherwise', () => {

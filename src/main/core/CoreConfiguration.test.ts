@@ -26,4 +26,15 @@ describe('writeCoreConfiguration', () => {
     expect((await stat(directory)).mode & 0o777).toBe(0o700)
     expect((await stat(join(directory, 'config.json'))).mode & 0o777).toBe(0o600)
   })
+
+  it('writes the Funnel address as the OAuth public base URL', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'devspace-core-config-'))
+    directories.push(parent)
+    const directory = join(parent, 'core')
+
+    await writeCoreConfiguration(directory, 7676, ['/projects/one'], 'https://device.tailnet.ts.net')
+
+    const contents = JSON.parse(await readFile(join(directory, 'config.json'), 'utf8')) as Record<string, unknown>
+    expect(contents.publicBaseUrl).toBe('https://device.tailnet.ts.net')
+  })
 })

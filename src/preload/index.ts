@@ -14,6 +14,8 @@ const api: DesktopApi = {
   startTunnel: () => ipcRenderer.invoke(ipcChannels.startTunnel),
   stopTunnel: () => ipcRenderer.invoke(ipcChannels.stopTunnel),
   copyMcpUrl: () => ipcRenderer.invoke(ipcChannels.copyMcpUrl),
+  copyOwnerPassword: () => ipcRenderer.invoke(ipcChannels.copyOwnerPassword),
+  beginChatGPTSetup: () => ipcRenderer.invoke(ipcChannels.beginChatGPTSetup),
   openTailscaleDownload: () => ipcRenderer.invoke(ipcChannels.openTailscaleDownload),
   subscribe: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot): void => listener(snapshot)
