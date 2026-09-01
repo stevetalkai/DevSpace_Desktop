@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import type { DesktopSnapshot } from '../../../shared/contracts'
 
 const initialSnapshot: DesktopSnapshot = {
-  core: { phase: 'stopped', port: 7676, startedAt: null, errorCode: null },
+  core: { phase: 'stopped', port: 7676, startedAt: null, errorCode: null, processId: null },
   tunnel: { phase: 'checking', publicUrl: null, mcpUrl: null, errorCode: null },
   chatgpt: { phase: 'not-connected', lastConnectedAt: null },
   projects: [],
-  appVersion: '0.1.0'
+  appVersion: '0.1.0',
+  settings: { launchAtLogin: false, locale: null, resumeConnection: false }
 }
 export function useDesktopSnapshot(): {
   snapshot: DesktopSnapshot

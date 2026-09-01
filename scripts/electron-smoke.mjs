@@ -8,6 +8,11 @@ const target = targets.find((entry) => entry.type === 'page' && entry.title === 
 if (!target) throw new Error('DevSpace renderer target was not found')
 
 const socket = new WebSocket(target.webSocketDebuggerUrl)
+process.on('unhandledRejection', (error) => {
+  console.error(error)
+  socket.close()
+  process.exitCode = 1
+})
 await new Promise((resolveOpen, rejectOpen) => {
   socket.once('open', resolveOpen)
   socket.once('error', rejectOpen)
@@ -83,12 +88,24 @@ if (initialText.includes('Stop service') || initialText.includes('停止服务')
 }
 await evaluate("document.querySelector('.service-control')?.click()")
 const startedText = await waitForText(['Running', '运行中', 'Service error', '服务错误'])
+const recoveredText = (startedText.includes('Service error') || startedText.includes('服务错误'))
+  ? await waitForText(['Running', '运行中'], 12_000)
+  : startedText
+
+if (process.env.DEVSPACE_SMOKE_OPEN_ADVANCED === '1') {
+  await evaluate("document.querySelector('.text-button')?.click()")
+  await waitForText(['Launch at login', '开机启动'])
+}
 
 mkdirSync(resolve('artifacts'), { recursive: true })
 const screenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
 writeFileSync(resolve('artifacts/stage1-home.png'), Buffer.from(screenshot.data, 'base64'))
 
-const started = startedText.includes('Running') || startedText.includes('运行中')
+if (process.env.DEVSPACE_SMOKE_OPEN_ADVANCED === '1') {
+  await evaluate("document.querySelector('.advanced-panel .icon-button')?.click()")
+}
+
+const started = recoveredText.includes('Running') || recoveredText.includes('运行中')
 if (started) {
   await evaluate("document.querySelector('.service-control')?.click()")
   await waitForText(['Stopped', '已停止'])

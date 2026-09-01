@@ -9,6 +9,10 @@ import { isHighRiskProjectPath, ProjectStore } from './projects/ProjectStore'
 import { TailscaleTunnelProvider, TunnelController } from './tunnel'
 import { ChatGPTConnectionMonitor, type CoreStructuredEvent } from './chatgpt/ChatGPTConnectionMonitor'
 import { OwnerTokenStore } from './security/OwnerTokenStore'
+import { DiagnosticLogStore, formatDiagnosticReport } from './diagnostics/DiagnosticLogStore'
+import { AppSettingsStore, type AppSettings } from './settings/AppSettingsStore'
+import { createTrayIcon, TrayController } from './tray/TrayController'
+import { resolveCorePort } from './core/CorePortResolver'
 import type { DesktopSnapshot, ProjectCandidate, ProjectMutationResult, ProjectSummary } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 
@@ -16,6 +20,13 @@ let coreService: CoreService | null = null
 let projectStore: ProjectStore | null = null
 let mainWindow: BrowserWindow | null = null
 let ownerToken: string | null = null
+let settingsStore: AppSettingsStore | null = null
+let appSettings: AppSettings = { launchAtLogin: false, locale: null, resumeConnection: false }
+let diagnosticLog: DiagnosticLogStore | null = null
+let trayController: TrayController | null = null
+let isQuitting = false
+
+app.setName('DevSpace Desktop')
 const chatgptMonitor = new ChatGPTConnectionMonitor()
 const tunnelController = new TunnelController(
   new TailscaleTunnelProvider({ executablePath: findTailscaleExecutable() }),
@@ -58,12 +69,14 @@ function snapshot(): DesktopSnapshot {
     tunnel: tunnelController.getStatus(),
     chatgpt: chatgptMonitor.getStatus(),
     projects: projectSummaries(),
-    appVersion: app.getVersion()
+    appVersion: app.getVersion(),
+    settings: { ...appSettings }
   }
 }
 
 function broadcastSnapshot(): void {
   chatgptMonitor.setPrerequisites(service().getStatus().phase === 'running' && tunnelController.getStatus().phase === 'connected')
+  trayController?.refresh()
   mainWindow?.webContents.send(ipcChannels.snapshotChanged, snapshot())
 }
 
@@ -85,6 +98,11 @@ function createWindow(): void {
   })
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return
+    event.preventDefault()
+    mainWindow?.hide()
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -104,8 +122,8 @@ function registerIpc(): void {
     await shell.openExternal('https://chatgpt.com/plugins')
   })
   ipcMain.handle(ipcChannels.detectTunnel, () => tunnelController.detect())
-  ipcMain.handle(ipcChannels.startTunnel, () => tunnelController.start())
-  ipcMain.handle(ipcChannels.stopTunnel, () => tunnelController.stop())
+  ipcMain.handle(ipcChannels.startTunnel, () => resumeConnection())
+  ipcMain.handle(ipcChannels.stopTunnel, () => pauseConnection())
   ipcMain.handle(ipcChannels.copyMcpUrl, (): boolean => {
     const mcpUrl = tunnelController.getStatus().mcpUrl
     if (!mcpUrl) return false
@@ -118,6 +136,30 @@ function registerIpc(): void {
     return true
   })
   ipcMain.handle(ipcChannels.beginChatGPTSetup, () => chatgptMonitor.beginSetup())
+  ipcMain.handle(ipcChannels.setLaunchAtLogin, async (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') return { ...appSettings }
+    app.setLoginItemSettings({ openAtLogin: enabled })
+    appSettings = await settings().update({ launchAtLogin: app.getLoginItemSettings().openAtLogin })
+    broadcastSnapshot()
+    return { ...appSettings }
+  })
+  ipcMain.handle(ipcChannels.setLocale, async (_event, locale: unknown) => {
+    if (locale !== 'zh-Hans' && locale !== 'en') return { ...appSettings }
+    appSettings = await settings().update({ locale })
+    trayController?.setLocale(locale)
+    broadcastSnapshot()
+    return { ...appSettings }
+  })
+  ipcMain.handle(ipcChannels.copyDiagnostics, (): boolean => {
+    if (!diagnosticLog) return false
+    clipboard.writeText(formatDiagnosticReport({ snapshot: snapshot(), events: diagnosticLog.getRecent() }, app.getVersion()))
+    return true
+  })
+  ipcMain.handle(ipcChannels.openLogsFolder, async () => {
+    const logsDirectory = join(app.getPath('userData'), 'logs')
+    mkdirSync(logsDirectory, { recursive: true, mode: 0o700 })
+    await shell.openPath(logsDirectory)
+  })
   ipcMain.handle(ipcChannels.openTailscaleDownload, async () => {
     await shell.openExternal('https://tailscale.com/download')
   })
@@ -183,6 +225,32 @@ function findTailscaleExecutable(): string {
   return candidates.find(existsSync) ?? 'tailscale'
 }
 
+function settings(): AppSettingsStore {
+  if (!settingsStore) throw new Error('Settings store is not initialized')
+  return settingsStore
+}
+
+async function pauseConnection(): Promise<ReturnType<TunnelController['getStatus']>> {
+  const status = await tunnelController.stop()
+  appSettings = await settings().update({ resumeConnection: false })
+  broadcastSnapshot()
+  return status
+}
+
+async function resumeConnection(): Promise<ReturnType<TunnelController['getStatus']>> {
+  if (service().getStatus().phase !== 'running') await service().start()
+  const status = await tunnelController.start()
+  if (status.phase === 'connected') appSettings = await settings().update({ resumeConnection: true })
+  broadcastSnapshot()
+  return status
+}
+
+function showMainWindow(): void {
+  if (!mainWindow) createWindow()
+  mainWindow?.show()
+  mainWindow?.focus()
+}
+
 async function applyProjectRoots(): Promise<void> {
   const availableRoots = projectSummaries().filter((project) => project.available).map((project) => project.path)
   await service().replaceAllowedRoots(availableRoots)
@@ -205,36 +273,86 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
+  settingsStore = new AppSettingsStore(join(app.getPath('userData'), 'config', 'settings.json'))
+  appSettings = await settingsStore.load()
+  if (appSettings.launchAtLogin) app.setLoginItemSettings({ openAtLogin: true })
+  diagnosticLog = new DiagnosticLogStore({ logsDirectory: join(app.getPath('userData'), 'logs') })
   projectStore = new ProjectStore(join(app.getPath('userData'), 'config', 'projects.json'))
   void projectStore.load().then((projectSnapshot) => {
     const availableRoots = projectSnapshot.projects
       .map((project) => project.path)
       .filter(isAvailableDirectory)
+    void resolveCorePort().then((corePort) => {
     coreService = new CoreService({
+      port: corePort,
       allowedRoots: availableRoots.length > 0 ? availableRoots : [emptyWorkspace],
       fallbackRoot: emptyWorkspace,
       configDirectory: join(app.getPath('userData'), 'core'),
       ownerToken: ownerToken ?? undefined
     })
-    coreService.on('status', broadcastSnapshot)
-    coreService.on('core-event', (event: CoreStructuredEvent) => chatgptMonitor.accept(event))
-    tunnelController.on('status', broadcastSnapshot)
-    chatgptMonitor.on('status', broadcastSnapshot)
+    coreService.on('status', (status) => {
+      void diagnosticLog?.append(status.phase === 'failed' ? 'error' : 'info', 'core', `Core ${status.phase}`, { port: status.port, errorCode: status.errorCode })
+      broadcastSnapshot()
+    })
+    coreService.on('core-event', (event: CoreStructuredEvent) => {
+      chatgptMonitor.accept(event)
+      void diagnosticLog?.append('debug', 'core', event.event, event)
+    })
+    tunnelController.on('status', (status) => {
+      void diagnosticLog?.append(status.phase === 'failed' ? 'error' : 'info', 'tunnel', `Tunnel ${status.phase}`, { errorCode: status.errorCode, publicUrl: status.publicUrl })
+      broadcastSnapshot()
+    })
+    chatgptMonitor.on('status', (status) => {
+      void diagnosticLog?.append('info', 'chatgpt', `ChatGPT ${status.phase}`)
+      broadcastSnapshot()
+    })
     registerIpc()
     createWindow()
-    void tunnelController.detect()
+    trayController = new TrayController(
+      createTrayIcon(),
+      snapshot,
+      {
+        showWindow: showMainWindow,
+        openChatGPT: () => shell.openExternal('https://chatgpt.com/plugins'),
+        pauseConnection,
+        resumeConnection,
+        quit: () => app.quit()
+      },
+      appSettings.locale ?? (app.getLocale().toLowerCase().startsWith('zh') ? 'zh-Hans' : 'en')
+    )
+    void tunnelController.detect().then(async (detected) => {
+      if (detected.phase === 'connected' || appSettings.resumeConnection) {
+        await service().start()
+        if (detected.phase !== 'connected') await resumeConnection()
+        else {
+          appSettings = await settings().update({ resumeConnection: true })
+          broadcastSnapshot()
+        }
+      }
+    })
+    }).catch(() => {
+      const chinese = (appSettings.locale ?? app.getLocale()).toLowerCase().startsWith('zh')
+      dialog.showErrorBox(
+        chinese ? 'DevSpace 无法启动' : 'DevSpace cannot start',
+        chinese ? '端口 7676 至 7686 均已被其他程序使用。' : 'Ports 7676 through 7686 are already in use.'
+      )
+      app.quit()
+    })
   })
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    showMainWindow()
   })
 })
 
 app.on('before-quit', (event) => {
+  isQuitting = true
   if (!coreService || coreService.getStatus().phase === 'stopped') return
   event.preventDefault()
-  void coreService.stop().finally(() => app.exit())
+  void coreService.stop().finally(() => app.quit())
 })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+app.on('window-all-closed', () => undefined)
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) app.quit()
+else app.on('second-instance', showMainWindow)

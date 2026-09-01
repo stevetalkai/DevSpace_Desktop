@@ -27,7 +27,8 @@ const initialStatus = (port: number): CoreStatus => ({
   phase: 'stopped',
   port,
   startedAt: null,
-  errorCode: null
+  errorCode: null,
+  processId: null
 })
 
 export class CoreService extends EventEmitter {
@@ -45,6 +46,8 @@ export class CoreService extends EventEmitter {
   private status: CoreStatus
   private startPromise: Promise<CoreStatus> | null = null
   private intentionallyStopping = false
+  private restartTimer: NodeJS.Timeout | null = null
+  private crashTimes: number[] = []
 
   constructor(options: CoreServiceOptions = {}) {
     super()
@@ -106,7 +109,9 @@ export class CoreService extends EventEmitter {
 
   private async performStart(): Promise<CoreStatus> {
     this.intentionallyStopping = false
-    this.update({ phase: 'starting', startedAt: null, errorCode: null })
+    if (this.restartTimer) clearTimeout(this.restartTimer)
+    this.restartTimer = null
+    this.update({ phase: 'starting', startedAt: null, errorCode: null, processId: null })
 
     let cliPath: string
     try {
@@ -124,6 +129,7 @@ export class CoreService extends EventEmitter {
       if (this.intentionallyStopping) return
       const errorCode = code === 0 && signal === null ? 'core_stopped_unexpectedly' : 'core_crashed'
       this.fail(errorCode)
+      this.scheduleCrashRecovery()
     })
     this.process.once('error', () => this.fail('core_launch_failed'))
 
@@ -131,7 +137,7 @@ export class CoreService extends EventEmitter {
     while (Date.now() < deadline) {
       if (!this.process) return this.getStatus()
       if (await this.probePort(this.port, 500)) {
-        this.update({ phase: 'running', startedAt: new Date().toISOString(), errorCode: null })
+        this.update({ phase: 'running', startedAt: new Date().toISOString(), errorCode: null, processId: this.process.pid ?? null })
         return this.getStatus()
       }
       await delay(250)
@@ -142,11 +148,13 @@ export class CoreService extends EventEmitter {
   }
 
   async stop(): Promise<CoreStatus> {
+    if (this.restartTimer) clearTimeout(this.restartTimer)
+    this.restartTimer = null
     if (!this.process && this.status.phase === 'stopped') return this.getStatus()
     this.intentionallyStopping = true
     this.update({ phase: 'stopping', errorCode: null })
     await this.stopProcess()
-    this.update({ phase: 'stopped', startedAt: null, errorCode: null })
+    this.update({ phase: 'stopped', startedAt: null, errorCode: null, processId: null })
     return this.getStatus()
   }
 
@@ -169,8 +177,24 @@ export class CoreService extends EventEmitter {
   }
 
   private fail(errorCode: string): CoreStatus {
-    this.update({ phase: 'failed', startedAt: null, errorCode })
+    this.update({ phase: 'failed', startedAt: null, errorCode, processId: null })
     return this.getStatus()
+  }
+
+  private scheduleCrashRecovery(): void {
+    const now = Date.now()
+    this.crashTimes = this.crashTimes.filter((time) => now - time < 60_000)
+    if (this.crashTimes.length >= 3) {
+      this.fail('core_restart_exhausted')
+      return
+    }
+    this.crashTimes.push(now)
+    const delayMs = 1_000 * 2 ** (this.crashTimes.length - 1)
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null
+      if (!this.intentionallyStopping && this.status.phase === 'failed') void this.start()
+    }, delayMs)
+    this.restartTimer.unref()
   }
 
   private observeCoreOutput(stream: NodeJS.ReadableStream | null): void {

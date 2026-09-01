@@ -5,6 +5,7 @@ export interface CoreStatus {
   port: number
   startedAt: string | null
   errorCode: string | null
+  processId: number | null
 }
 
 export type TunnelPhase =
@@ -26,6 +27,13 @@ export interface DesktopSnapshot {
   chatgpt: ChatGPTStatus
   projects: ProjectSummary[]
   appVersion: string
+  settings: AppSettingsSnapshot
+}
+
+export interface AppSettingsSnapshot {
+  launchAtLogin: boolean
+  locale: 'zh-Hans' | 'en' | null
+  resumeConnection: boolean
 }
 
 export interface ChatGPTStatus {
@@ -74,6 +82,10 @@ export interface DesktopApi {
   copyMcpUrl(): Promise<boolean>
   copyOwnerPassword(): Promise<boolean>
   beginChatGPTSetup(): Promise<ChatGPTStatus>
+  setLaunchAtLogin(enabled: boolean): Promise<AppSettingsSnapshot>
+  setLocale(locale: 'zh-Hans' | 'en'): Promise<AppSettingsSnapshot>
+  copyDiagnostics(): Promise<boolean>
+  openLogsFolder(): Promise<void>
   openTailscaleDownload(): Promise<void>
 }
 
@@ -92,5 +104,9 @@ export const ipcChannels = {
   copyMcpUrl: 'tunnel:copy-mcp-url',
   copyOwnerPassword: 'chatgpt:copy-owner-password',
   beginChatGPTSetup: 'chatgpt:begin-setup',
+  setLaunchAtLogin: 'settings:set-launch-at-login',
+  setLocale: 'settings:set-locale',
+  copyDiagnostics: 'diagnostics:copy',
+  openLogsFolder: 'diagnostics:open-folder',
   openTailscaleDownload: 'tunnel:open-download'
 } as const

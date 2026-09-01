@@ -107,4 +107,27 @@ describe('CoreService', () => {
 
     expect(environments[1]?.DEVSPACE_ALLOWED_ROOTS).toBe('/private/empty')
   })
+
+  it('restarts automatically after an unexpected crash', async () => {
+    vi.useFakeTimers()
+    const first = new FakeChild()
+    const second = new FakeChild()
+    const spawnCore = vi.fn()
+      .mockReturnValueOnce(first as never)
+      .mockReturnValueOnce(second as never)
+    const service = new CoreService({
+      resolveCli: () => '/fake/cli.js',
+      probePort: async () => true,
+      spawnCore
+    })
+    await service.start()
+
+    first.emit('exit', 1, null)
+    expect(service.getStatus()).toMatchObject({ phase: 'failed', errorCode: 'core_crashed' })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(spawnCore).toHaveBeenCalledTimes(2)
+    expect(service.getStatus().phase).toBe('running')
+    vi.useRealTimers()
+  })
 })

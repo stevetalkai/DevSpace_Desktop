@@ -25,7 +25,7 @@ export class TunnelController extends EventEmitter {
       await this.onPublicUrlChanged(null)
       return this.update(fromEnvironment(environment))
     }
-    const status = fromProviderStatus(await this.provider.status())
+    const status = fromProviderStatus(await this.provider.status(), this.getCoreStatus().port)
     await this.onPublicUrlChanged(status.publicUrl)
     return this.update(status)
   }
@@ -70,8 +70,9 @@ function fromEnvironment(environment: TunnelEnvironment): TunnelStatus {
   return fromError(environment.errorCode ?? 'invalid_output')
 }
 
-function fromProviderStatus(status: ProviderStatus): TunnelStatus {
-  if (status.state === 'running' && status.publicUrl) return connected(status.publicUrl)
+function fromProviderStatus(status: ProviderStatus, expectedPort: number): TunnelStatus {
+  if (status.state === 'running' && status.publicUrl && status.localPort === expectedPort) return connected(status.publicUrl)
+  if (status.state === 'running') return { phase: 'ready', publicUrl: null, mcpUrl: null, errorCode: null }
   if (status.state === 'stopped') return { phase: 'ready', publicUrl: null, mcpUrl: null, errorCode: null }
   return fromError(status.errorCode ?? 'invalid_output')
 }

@@ -103,6 +103,38 @@ describe('locale resources', () => {
     }
   });
 
+  it('includes settings, diagnostics, tray, restore, and port messages in both languages', () => {
+    const requiredKeys = [
+      'app.settings.title',
+      'app.settings.description',
+      'app.settings.launch_at_login',
+      'app.settings.launch_at_login.on',
+      'app.settings.launch_at_login.off',
+      'app.advanced.title',
+      'app.advanced.description',
+      'app.diagnostics.title',
+      'app.diagnostics.copy',
+      'app.diagnostics.open_log_folder',
+      'app.diagnostics.copied',
+      'app.tray.status.connected',
+      'app.tray.status.paused',
+      'app.tray.status.stopped',
+      'app.tray.menu.open_devspace',
+      'app.tray.menu.open_chatgpt',
+      'app.tray.menu.pause_connection',
+      'app.tray.menu.resume_connection',
+      'app.tray.menu.quit',
+      'app.core.auto_restore',
+      'app.core.port_occupied',
+      'app.core.port_auto_selected',
+    ];
+
+    for (const key of requiredKeys) {
+      expect(strings.en[key]).toBeTruthy();
+      expect(strings['zh-Hans'][key]).toBeTruthy();
+    }
+  });
+
   it('parses escaped .strings values', () => expect(parseStrings('"app.example" = "A\\nB";')['app.example']).toBe('A\nB'));
 
   it('uses Chinese for Chinese system languages and English otherwise', () => {

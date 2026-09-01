@@ -5,6 +5,7 @@ import { ProjectList } from './components/ProjectList'
 import { RiskDialog } from './components/RiskDialog'
 import { ConnectionPanel } from './components/ConnectionPanel'
 import { ChatGPTWizard } from './components/ChatGPTWizard'
+import { AdvancedPanel } from './components/AdvancedPanel'
 import { useDesktopSnapshot } from './hooks/useDesktopSnapshot'
 import { resolveLocale, saveLocale, translate, type Locale } from './locales/locales'
 import type { ChatGPTPhase, ProjectCandidate, ProjectMutationResult, ServicePhase, TunnelPhase } from '../../shared/contracts'
@@ -84,6 +85,7 @@ export function App(): JSX.Element {
   const [tunnelPending, setTunnelPending] = useState(false)
   const [addressCopied, setAddressCopied] = useState(false)
   const [chatgptWizardOpen, setChatgptWizardOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const { snapshot, pending, startCore, stopCore } = useDesktopSnapshot()
   const t = useMemo(() => (key: string, ...values: Array<string | number>) => translate(key, locale, ...values), [locale])
   const coreRunning = snapshot.core.phase === 'running'
@@ -93,6 +95,7 @@ export function App(): JSX.Element {
     saveLocale(next)
     document.documentElement.lang = next === 'zh-Hans' ? 'zh-CN' : 'en'
     setLocale(next)
+    void window.devspace.setLocale(next)
   }
 
   const handleMutationResult = (result: ProjectMutationResult): boolean => {
@@ -260,7 +263,7 @@ export function App(): JSX.Element {
         </section>
 
         <footer className="action-bar">
-          <button className="text-button">
+          <button className="text-button" onClick={() => setAdvancedOpen(true)}>
             <CircleEllipsis size={17} />
             {t('app.advanced.title')}
           </button>
@@ -290,6 +293,7 @@ export function App(): JSX.Element {
           onClose={() => setChatgptWizardOpen(false)}
         />
       )}
+      {advancedOpen && <AdvancedPanel snapshot={snapshot} t={t} onClose={() => setAdvancedOpen(false)} />}
     </div>
   )
 }

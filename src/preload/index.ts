@@ -16,6 +16,10 @@ const api: DesktopApi = {
   copyMcpUrl: () => ipcRenderer.invoke(ipcChannels.copyMcpUrl),
   copyOwnerPassword: () => ipcRenderer.invoke(ipcChannels.copyOwnerPassword),
   beginChatGPTSetup: () => ipcRenderer.invoke(ipcChannels.beginChatGPTSetup),
+  setLaunchAtLogin: (enabled) => ipcRenderer.invoke(ipcChannels.setLaunchAtLogin, enabled),
+  setLocale: (locale) => ipcRenderer.invoke(ipcChannels.setLocale, locale),
+  copyDiagnostics: () => ipcRenderer.invoke(ipcChannels.copyDiagnostics),
+  openLogsFolder: () => ipcRenderer.invoke(ipcChannels.openLogsFolder),
   openTailscaleDownload: () => ipcRenderer.invoke(ipcChannels.openTailscaleDownload),
   subscribe: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot): void => listener(snapshot)
