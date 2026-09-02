@@ -1,7 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ChatGPTConnectionMonitor, parseCoreStructuredEvent } from './ChatGPTConnectionMonitor'
-
-afterEach(() => vi.useRealTimers())
 
 describe('ChatGPTConnectionMonitor', () => {
   it('accepts only structured Core events', () => {
@@ -24,12 +22,31 @@ describe('ChatGPTConnectionMonitor', () => {
     expect(monitor.getStatus()).toMatchObject({ phase: 'connected' })
   })
 
-  it('marks an inactive connection as stale', () => {
-    vi.useFakeTimers()
-    const monitor = new ChatGPTConnectionMonitor({ staleAfterMs: 1_000, now: () => 0 })
+  it('restores the locally authorized state from Core instead of Desktop history', () => {
+    const monitor = new ChatGPTConnectionMonitor()
+    monitor.accept({ ts: 'now', level: 'info', event: 'oauth_authorization_state', authorizedClientCount: 1 })
+
+    expect(monitor.getStatus()).toEqual({ phase: 'configured', lastConnectedAt: null })
+  })
+
+  it('returns to configured when the active MCP session closes', () => {
+    const monitor = new ChatGPTConnectionMonitor({ now: () => 0 })
     monitor.setPrerequisites(true)
+    monitor.accept({ ts: 'now', level: 'info', event: 'oauth_authorization_state', authorizedClientCount: 1 })
+    monitor.accept({ ts: 'now', level: 'info', event: 'mcp_session_created', sessionIdPrefix: 'session-1' })
+    monitor.accept({ ts: 'now', level: 'info', event: 'mcp_session_closed', sessionIdPrefix: 'session-1' })
+
+    expect(monitor.getStatus()).toEqual({ phase: 'configured', lastConnectedAt: '1970-01-01T00:00:00.000Z' })
+  })
+
+  it('keeps the independently verified authorization state when Core becomes unavailable', () => {
+    const monitor = new ChatGPTConnectionMonitor({ now: () => 0 })
+    monitor.setPrerequisites(true)
+    monitor.accept({ ts: 'now', level: 'info', event: 'oauth_authorization_state', authorizedClientCount: 1 })
     monitor.accept({ ts: 'now', level: 'info', event: 'mcp_session_created' })
-    vi.advanceTimersByTime(1_000)
-    expect(monitor.getStatus()).toEqual({ phase: 'stale', lastConnectedAt: '1970-01-01T00:00:00.000Z' })
+
+    monitor.setPrerequisites(false)
+
+    expect(monitor.getStatus()).toEqual({ phase: 'configured', lastConnectedAt: '1970-01-01T00:00:00.000Z' })
   })
 })

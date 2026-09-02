@@ -35,8 +35,10 @@ describe('OwnerTokenStore', () => {
     expect(token).toBe('ab'.repeat(32))
     expect(diskContents).not.toContain(token)
     expect(diskContents.trim()).toMatch(/^[A-Za-z0-9+/]+={0,2}$/u)
-    expect((await stat(join(root, 'security'))).mode & 0o777).toBe(0o700)
-    expect((await stat(tokenPath)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') {
+      expect((await stat(join(root, 'security'))).mode & 0o777).toBe(0o700)
+      expect((await stat(tokenPath)).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('returns the same token after reloading the store', async () => {

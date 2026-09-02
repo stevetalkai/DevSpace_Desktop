@@ -1,5 +1,5 @@
 import { constants } from 'node:fs'
-import { chmod, mkdir, open, rename, stat, unlink } from 'node:fs/promises'
+import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 const MEMORY_EVENT_LIMIT = 500
@@ -112,10 +112,164 @@ export class DiagnosticLogStore {
       if (!isMissingFileError(error)) throw error
     })
   }
+
+  async getReportEvents(limit = 2_000): Promise<DiagnosticEvent[]> {
+    await this.writeQueue
+    if (!this.logsDirectory) return this.getRecent().slice(-limit)
+
+    const events: DiagnosticEvent[] = []
+    for (const fileName of [`${LOG_FILE_NAME}.2`, `${LOG_FILE_NAME}.1`, LOG_FILE_NAME]) {
+      const contents = await readFile(join(this.logsDirectory, fileName), 'utf8').catch((error: unknown) => {
+        if (isMissingFileError(error)) return ''
+        throw error
+      })
+      for (const line of contents.split(/\r?\n/)) {
+        if (!line.trim()) continue
+        try {
+          const event = JSON.parse(line) as DiagnosticEvent
+          if (isDiagnosticEvent(event)) events.push(event)
+        } catch {
+          // A partially written final line should not prevent report export.
+        }
+      }
+    }
+    return (redactSensitiveValues(events.slice(-limit)) as DiagnosticEvent[])
+  }
 }
 
 export function formatDiagnosticReport(snapshot: unknown, appVersion: string): string {
   return `${JSON.stringify({ appVersion, snapshot: redactSensitiveValues(snapshot) }, null, 2)}\n`
+}
+
+export function formatActivityReport(
+  snapshot: unknown,
+  events: DiagnosticEvent[],
+  appVersion: string,
+  locale: 'zh-Hans' | 'en' = 'zh-Hans',
+  generatedAt = new Date()
+): string {
+  const safeSnapshot = redactSensitiveValues(snapshot) as Record<string, unknown>
+  const safeEvents = redactSensitiveValues(events) as DiagnosticEvent[]
+  const toolEvents = safeEvents.filter((event) => event.message === 'tool_call')
+  const successfulTools = toolEvents.filter((event) => detailRecord(event).success !== false).length
+  const failedTools = toolEvents.length - successfulTools
+  const chinese = locale === 'zh-Hans'
+  const lines = [
+    `# ${chinese ? 'DevSpace 活动报告' : 'DevSpace Activity Report'}`,
+    '',
+    `- ${chinese ? '生成时间' : 'Generated'}：${generatedAt.toISOString()}`,
+    `- ${chinese ? '应用版本' : 'App version'}：${appVersion}`,
+    `- ${chinese ? '工具调用' : 'Tool calls'}：${toolEvents.length}`,
+    `- ${chinese ? '成功/失败' : 'Succeeded/failed'}：${successfulTools}/${failedTools}`,
+    '',
+    `## ${chinese ? '运行概览' : 'Runtime overview'}`,
+    '',
+    ...snapshotSummary(safeSnapshot, chinese),
+    '',
+    `## ${chinese ? '工具调用时间线' : 'Tool call timeline'}`,
+    ''
+  ]
+
+  if (toolEvents.length === 0) {
+    lines.push(chinese ? '本次运行暂未记录工具调用。' : 'No tool calls were recorded in this run.', '')
+  } else {
+    lines.push(
+      `| ${chinese ? '时间' : 'Time'} | ${chinese ? '工具' : 'Tool'} | ${chinese ? '操作详情' : 'Details'} | ${chinese ? '结果' : 'Result'} | ${chinese ? '耗时' : 'Duration'} |`,
+      '| --- | --- | --- | --- | --- |'
+    )
+    for (const event of toolEvents) {
+      const details = detailRecord(event)
+      const succeeded = details.success !== false
+      lines.push(`| ${markdownCell(event.timestamp)} | ${markdownCell(String(details.tool ?? 'unknown'))} | ${markdownCell(toolDescription(details, chinese))} | ${succeeded ? (chinese ? '成功' : 'Succeeded') : (chinese ? '失败' : 'Failed')} | ${typeof details.durationMs === 'number' ? `${details.durationMs} ms` : '—'} |`)
+    }
+    lines.push('')
+  }
+
+  lines.push(
+    `## ${chinese ? '连接与服务事件' : 'Connection and service events'}`,
+    ''
+  )
+  const lifecycleEvents = safeEvents.filter((event) =>
+    event.message !== 'tool_call'
+    && event.message !== 'http_request'
+    && event.message !== 'mcp_request'
+    && event.message !== 'stdout'
+    && event.message !== 'stderr'
+  )
+  if (lifecycleEvents.length === 0) lines.push(chinese ? '无。' : 'None.')
+  else for (const event of lifecycleEvents) lines.push(`- ${event.timestamp} · ${event.source} · ${event.message}`)
+
+  lines.push(
+    '',
+    `## ${chinese ? '隐私说明' : 'Privacy note'}`,
+    '',
+    chinese
+      ? '报告包含脱敏后的命令预览、工具名称、工作区和执行结果；密码、令牌、授权信息、文件正文及完整终端输出不会写入报告。'
+      : 'The report includes redacted command previews, tool names, workspaces, and results. Passwords, tokens, authorization data, file contents, and full terminal output are excluded.',
+    ''
+  )
+  return lines.join('\n')
+}
+
+function isDiagnosticEvent(value: unknown): value is DiagnosticEvent {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const event = value as Partial<DiagnosticEvent>
+  return typeof event.timestamp === 'string'
+    && typeof event.level === 'string'
+    && typeof event.source === 'string'
+    && typeof event.message === 'string'
+}
+
+function detailRecord(event: DiagnosticEvent): Record<string, unknown> {
+  return event.details && typeof event.details === 'object' && !Array.isArray(event.details)
+    ? event.details as Record<string, unknown>
+    : {}
+}
+
+function snapshotSummary(snapshot: Record<string, unknown>, chinese: boolean): string[] {
+  const core = objectRecord(snapshot.core)
+  const tunnel = objectRecord(snapshot.tunnel)
+  const chatgpt = objectRecord(snapshot.chatgpt)
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : []
+  const activities = Array.isArray(snapshot.activities) ? snapshot.activities : []
+  const toolCalls = Array.isArray(snapshot.toolCalls) ? snapshot.toolCalls : []
+  const value = (record: Record<string, unknown>, key: string): string => {
+    const item = record[key]
+    return typeof item === 'string' || typeof item === 'number' ? String(item) : '—'
+  }
+  return [
+    `| ${chinese ? '项目' : 'Item'} | ${chinese ? '状态/数量' : 'Status/count'} |`,
+    '| --- | --- |',
+    `| ${chinese ? '本地服务' : 'Local service'} | ${markdownCell(value(core, 'phase'))} |`,
+    `| ${chinese ? '安全连接' : 'Secure connection'} | ${markdownCell(value(tunnel, 'phase'))} |`,
+    `| ChatGPT | ${markdownCell(value(chatgpt, 'phase'))} |`,
+    `| ${chinese ? '已授权项目' : 'Authorized projects'} | ${projects.length} |`,
+    `| ${chinese ? '当前工具调用记录' : 'Current tool call records'} | ${toolCalls.length} |`,
+    `| ${chinese ? '当前活动记录' : 'Current activity records'} | ${activities.length} |`
+  ]
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function toolDescription(details: Record<string, unknown>, chinese: boolean): string {
+  const parts: string[] = []
+  if (typeof details.commandPreview === 'string') parts.push(`${chinese ? '命令' : 'Command'}: ${details.commandPreview}`)
+  if (typeof details.path === 'string') parts.push(`${chinese ? '路径' : 'Path'}: ${details.path}`)
+  if (typeof details.workingDirectory === 'string') parts.push(`${chinese ? '工作目录' : 'Working directory'}: ${details.workingDirectory}`)
+  if (typeof details.workspaceId === 'string') parts.push(`Workspace: ${details.workspaceId}`)
+  if (Array.isArray(details.files)) parts.push(`${chinese ? '文件' : 'Files'}: ${details.files.join(', ')}`)
+  if (typeof details.additions === 'number' || typeof details.removals === 'number') parts.push(`+${details.additions ?? 0}/-${details.removals ?? 0}`)
+  if (typeof details.sessionId === 'number') parts.push(`Session: ${details.sessionId}`)
+  if (typeof details.inputLength === 'number') parts.push(`${chinese ? '输入字符' : 'Input characters'}: ${details.inputLength}`)
+  if (typeof details.running === 'boolean') parts.push(details.running ? (chinese ? '进程运行中' : 'Process running') : `${chinese ? '进程已退出' : 'Process exited'} (${details.exitCode ?? '—'})`)
+  if (typeof details.error === 'string') parts.push(`${chinese ? '错误' : 'Error'}: ${details.error}`)
+  return parts.join('；') || (chinese ? '已执行' : 'Executed')
+}
+
+function markdownCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ')
 }
 
 export function redactSensitiveValues(value: unknown): unknown {

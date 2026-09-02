@@ -17,14 +17,24 @@ describe('writeCoreConfiguration', () => {
 
     await writeCoreConfiguration(directory, 7676, ['/projects/one,with-comma', '/projects/two'])
 
-    const contents = JSON.parse(await readFile(join(directory, 'config.json'), 'utf8')) as Record<string, unknown>
-    expect(contents).toEqual({
+    const legacy = JSON.parse(await readFile(join(directory, 'config.json'), 'utf8')) as Record<string, unknown>
+    expect(legacy).toEqual({
       host: '127.0.0.1',
       port: 7676,
       allowedRoots: ['/projects/one,with-comma', '/projects/two']
     })
-    expect((await stat(directory)).mode & 0o777).toBe(0o700)
-    expect((await stat(join(directory, 'config.json'))).mode & 0o777).toBe(0o600)
+    const modern = JSON.parse(await readFile(join(directory, 'config.jsonc'), 'utf8')) as {
+      workspaces: { allowedRoots: string[] }
+      logging: { level: string }
+    }
+    expect(modern.workspaces.allowedRoots).toEqual(['/projects/one,with-comma', '/projects/two'])
+    expect(modern.logging.level).toBe('debug')
+    expect((modern.logging as { shellCommands?: boolean }).shellCommands).toBe(true)
+    if (process.platform !== 'win32') {
+      expect((await stat(directory)).mode & 0o777).toBe(0o700)
+      expect((await stat(join(directory, 'config.json'))).mode & 0o777).toBe(0o600)
+      expect((await stat(join(directory, 'config.jsonc'))).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('writes the Funnel address as the OAuth public base URL', async () => {
@@ -34,7 +44,11 @@ describe('writeCoreConfiguration', () => {
 
     await writeCoreConfiguration(directory, 7676, ['/projects/one'], 'https://device.tailnet.ts.net')
 
-    const contents = JSON.parse(await readFile(join(directory, 'config.json'), 'utf8')) as Record<string, unknown>
-    expect(contents.publicBaseUrl).toBe('https://device.tailnet.ts.net')
+    const legacy = JSON.parse(await readFile(join(directory, 'config.json'), 'utf8')) as Record<string, unknown>
+    expect(legacy.publicBaseUrl).toBe('https://device.tailnet.ts.net')
+    const modern = JSON.parse(await readFile(join(directory, 'config.jsonc'), 'utf8')) as {
+      server: { publicBaseUrl: string }
+    }
+    expect(modern.server.publicBaseUrl).toBe('https://device.tailnet.ts.net')
   })
 })

@@ -4,6 +4,8 @@ import { CoreService } from './CoreService'
 
 class FakeChild extends EventEmitter {
   killedWith: NodeJS.Signals[] = []
+  stdout = new EventEmitter()
+  stderr = new EventEmitter()
 
   kill(signal: NodeJS.Signals = 'SIGTERM'): boolean {
     this.killedWith.push(signal)
@@ -18,7 +20,8 @@ describe('CoreService', () => {
     const spawnCore = vi.fn((cliPath: string, port: number, environment: NodeJS.ProcessEnv) => {
       expect(cliPath).toBe('/fake/cli.js')
       expect(port).toBe(7676)
-      expect(environment.HOST).toBe('127.0.0.1')
+      expect(environment.HOST).toBeUndefined()
+      expect(environment.PORT).toBeUndefined()
       return child as never
     })
     const service = new CoreService({ spawnCore, probePort: async () => true, resolveCli: () => '/fake/cli.js' })
@@ -29,7 +32,8 @@ describe('CoreService', () => {
     expect(first.phase).toBe('running')
     expect(second.phase).toBe('running')
     expect(spawnCore.mock.calls[0]?.[1]).toBe(7676)
-    expect(spawnCore.mock.calls[0]?.[2]).toMatchObject({ HOST: '127.0.0.1', PORT: '7676' })
+    expect(spawnCore.mock.calls[0]?.[2]).not.toHaveProperty('HOST')
+    expect(spawnCore.mock.calls[0]?.[2]).not.toHaveProperty('PORT')
   })
 
   it('stops only the process it started', async () => {
@@ -65,6 +69,23 @@ describe('CoreService', () => {
     child.emit('exit', 1, null)
 
     expect(service.getStatus()).toMatchObject({ phase: 'failed', errorCode: 'core_crashed' })
+  })
+
+  it('preserves raw stderr and process exit details for crash diagnostics', async () => {
+    const child = new FakeChild()
+    const service = new CoreService({ spawnCore: () => child as never, probePort: async () => true, resolveCli: () => '/fake/cli.js' })
+    const outputListener = vi.fn()
+    const exitListener = vi.fn()
+    service.on('core-output', outputListener)
+    service.on('core-exit', exitListener)
+    await service.start()
+
+    child.stderr.emit('data', 'Error: transport failed\n    at server.js:1:1\n')
+    child.emit('exit', 1, null)
+
+    expect(outputListener).toHaveBeenNthCalledWith(1, { stream: 'stderr', line: 'Error: transport failed' })
+    expect(outputListener).toHaveBeenNthCalledWith(2, { stream: 'stderr', line: 'at server.js:1:1' })
+    expect(exitListener).toHaveBeenCalledWith({ code: 1, signal: null })
   })
 
   it('restarts a running process with updated allowed roots', async () => {

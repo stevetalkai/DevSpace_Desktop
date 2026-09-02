@@ -19,6 +19,6 @@ describe('AppSettingsStore', () => {
     const restored = new AppSettingsStore(file)
     expect(await restored.load()).toEqual({ launchAtLogin: true, locale: 'zh-Hans', resumeConnection: true })
     expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ version: 1 })
-    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') expect((await stat(file)).mode & 0o777).toBe(0o600)
   })
 })

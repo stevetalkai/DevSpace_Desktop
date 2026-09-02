@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { randomBytes } from 'node:crypto'
 import { request } from 'node:http'
-import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { CoreStatus } from '../../shared/contracts'
@@ -10,6 +11,16 @@ import { parseCoreStructuredEvent } from '../chatgpt/ChatGPTConnectionMonitor'
 
 type SpawnCore = (cliPath: string, port: number, environment: NodeJS.ProcessEnv) => ChildProcess
 type ProbeHealth = (port: number, timeoutMs: number) => Promise<boolean>
+
+export interface CoreProcessOutput {
+  stream: 'stdout' | 'stderr'
+  line: string
+}
+
+export interface CoreProcessExit {
+  code: number | null
+  signal: NodeJS.Signals | null
+}
 
 export interface CoreServiceOptions {
   port?: number
@@ -60,8 +71,6 @@ export class CoreService extends EventEmitter {
     this.configDirectory = options.configDirectory ?? null
     this.allowedRoots = options.allowedRoots ?? [this.fallbackRoot]
     this.environment = {
-      HOST: '127.0.0.1',
-      PORT: String(this.port),
       DEVSPACE_LOG_LEVEL: 'debug',
       DEVSPACE_LOG_FORMAT: 'json',
       DEVSPACE_LOG_REQUESTS: '1',
@@ -118,8 +127,8 @@ export class CoreService extends EventEmitter {
       if (this.configDirectory) await writeCoreConfiguration(this.configDirectory, this.port, this.allowedRoots, this.publicBaseUrl)
       cliPath = this.resolveCli()
       this.process = this.spawnCore(cliPath, this.port, this.environment)
-      this.observeCoreOutput(this.process.stdout)
-      this.observeCoreOutput(this.process.stderr)
+      this.observeCoreOutput(this.process.stdout, 'stdout')
+      this.observeCoreOutput(this.process.stderr, 'stderr')
     } catch {
       return this.fail('core_launch_failed')
     }
@@ -127,6 +136,7 @@ export class CoreService extends EventEmitter {
     this.process.once('exit', (code, signal) => {
       this.process = null
       if (this.intentionallyStopping) return
+      this.emit('core-exit', { code, signal } satisfies CoreProcessExit)
       const errorCode = code === 0 && signal === null ? 'core_stopped_unexpectedly' : 'core_crashed'
       this.fail(errorCode)
       this.scheduleCrashRecovery()
@@ -197,17 +207,27 @@ export class CoreService extends EventEmitter {
     this.restartTimer.unref()
   }
 
-  private observeCoreOutput(stream: NodeJS.ReadableStream | null): void {
+  private observeCoreOutput(stream: NodeJS.ReadableStream | null, streamName: CoreProcessOutput['stream']): void {
     if (!stream) return
     let remainder = ''
+    const observeLine = (line: string): void => {
+      const event = parseCoreStructuredEvent(line)
+      if (event) {
+        this.emit('core-event', event)
+        return
+      }
+      const trimmed = line.trim()
+      if (trimmed) this.emit('core-output', { stream: streamName, line: trimmed.slice(0, 4_000) } satisfies CoreProcessOutput)
+    }
     stream.on('data', (chunk: Buffer | string) => {
       remainder += chunk.toString()
       const lines = remainder.split(/\r?\n/u)
       remainder = lines.pop() ?? ''
-      for (const line of lines) {
-        const event = parseCoreStructuredEvent(line)
-        if (event) this.emit('core-event', event)
-      }
+      for (const line of lines) observeLine(line)
+    })
+    stream.on('end', () => {
+      if (remainder) observeLine(remainder)
+      remainder = ''
     })
   }
 
@@ -218,6 +238,12 @@ export class CoreService extends EventEmitter {
 }
 
 export function resolveCoreCli(): string {
+  const configuredPath = process.env.DEVSPACE_CORE_CLI_PATH?.trim()
+  if (configuredPath) return resolve(configuredPath)
+
+  const localCheckoutPath = resolve(process.cwd(), 'vendor', 'devspace', 'dist', 'cli.js')
+  if (existsSync(localCheckoutPath)) return localCheckoutPath
+
   const require = createRequire(import.meta.url)
   const packagePath = require.resolve('@waishnav/devspace/package.json')
   return join(dirname(packagePath), 'dist', 'cli.js')

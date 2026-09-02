@@ -2,18 +2,21 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell } fr
 import type { OpenDialogOptions } from 'electron'
 import { basename, join } from 'node:path'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
-import { realpath } from 'node:fs/promises'
+import { realpath, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { CoreService } from './core/CoreService'
+import { CoreService, type CoreProcessExit, type CoreProcessOutput } from './core/CoreService'
 import { isHighRiskProjectPath, ProjectStore } from './projects/ProjectStore'
 import { TailscaleTunnelProvider, TunnelController } from './tunnel'
 import { ChatGPTConnectionMonitor, type CoreStructuredEvent } from './chatgpt/ChatGPTConnectionMonitor'
 import { OwnerTokenStore } from './security/OwnerTokenStore'
-import { DiagnosticLogStore, formatDiagnosticReport } from './diagnostics/DiagnosticLogStore'
+import { DiagnosticLogStore, formatActivityReport, formatDiagnosticReport } from './diagnostics/DiagnosticLogStore'
 import { AppSettingsStore, type AppSettings } from './settings/AppSettingsStore'
 import { createTrayIcon, TrayController } from './tray/TrayController'
 import { resolveCorePort } from './core/CorePortResolver'
-import type { DesktopSnapshot, ProjectCandidate, ProjectMutationResult, ProjectSummary } from '../shared/contracts'
+import { TailscaleSetupService } from './tailscale/TailscaleSetupService'
+import { ActivityStore } from './activity/ActivityStore'
+import { ToolCallStore } from './activity/ToolCallStore'
+import type { ActivityKind, ActivityState, ChatGPTStatus, CoreStatus, DesktopSnapshot, ProjectCandidate, ProjectMutationResult, ProjectSummary, TailscaleInstallStatus, TunnelStatus } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 
 let coreService: CoreService | null = null
@@ -24,12 +27,15 @@ let settingsStore: AppSettingsStore | null = null
 let appSettings: AppSettings = { launchAtLogin: false, locale: null, resumeConnection: false }
 let diagnosticLog: DiagnosticLogStore | null = null
 let trayController: TrayController | null = null
+let tailscaleSetupService: TailscaleSetupService | null = null
 let isQuitting = false
+const activityStore = new ActivityStore()
+const toolCallStore = new ToolCallStore()
 
 app.setName('DevSpace Desktop')
 const chatgptMonitor = new ChatGPTConnectionMonitor()
 const tunnelController = new TunnelController(
-  new TailscaleTunnelProvider({ executablePath: findTailscaleExecutable() }),
+  new TailscaleTunnelProvider({ executablePath: findTailscaleExecutable }),
   () => service().getStatus(),
   async (publicUrl) => { await service().replacePublicBaseUrl(publicUrl) }
 )
@@ -68,6 +74,8 @@ function snapshot(): DesktopSnapshot {
     core: service().getStatus(),
     tunnel: tunnelController.getStatus(),
     chatgpt: chatgptMonitor.getStatus(),
+    activities: activityStore.getSnapshot(),
+    toolCalls: toolCallStore.getSnapshot(),
     projects: projectSummaries(),
     appVersion: app.getVersion(),
     settings: { ...appSettings }
@@ -121,6 +129,9 @@ function registerIpc(): void {
   ipcMain.handle(ipcChannels.openChatGPT, async () => {
     await shell.openExternal('https://chatgpt.com/plugins')
   })
+  ipcMain.handle(ipcChannels.openChatGPTDeveloperMode, async () => {
+    await shell.openExternal('https://chatgpt.com/plugins#settings/Security?section=developer-mode')
+  })
   ipcMain.handle(ipcChannels.detectTunnel, () => tunnelController.detect())
   ipcMain.handle(ipcChannels.startTunnel, () => resumeConnection())
   ipcMain.handle(ipcChannels.stopTunnel, () => pauseConnection())
@@ -155,13 +166,40 @@ function registerIpc(): void {
     clipboard.writeText(formatDiagnosticReport({ snapshot: snapshot(), events: diagnosticLog.getRecent() }, app.getVersion()))
     return true
   })
+  ipcMain.handle(ipcChannels.exportActivityReport, async (): Promise<boolean> => {
+    if (!diagnosticLog) return false
+    const generatedAt = new Date()
+    const stamp = generatedAt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '')
+    const options = {
+      title: appSettings.locale === 'en' ? 'Export readable DevSpace report' : '导出 DevSpace 可读报告',
+      defaultPath: join(app.getPath('documents'), `DevSpace-readable-report-${stamp}.md`),
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    }
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return false
+
+    const report = formatActivityReport(
+      snapshot(),
+      await diagnosticLog.getReportEvents(),
+      app.getVersion(),
+      appSettings.locale ?? 'zh-Hans',
+      generatedAt
+    )
+    await writeFile(result.filePath, report, { encoding: 'utf8', mode: 0o600 })
+    return true
+  })
   ipcMain.handle(ipcChannels.openLogsFolder, async () => {
     const logsDirectory = join(app.getPath('userData'), 'logs')
     mkdirSync(logsDirectory, { recursive: true, mode: 0o700 })
     await shell.openPath(logsDirectory)
   })
-  ipcMain.handle(ipcChannels.openTailscaleDownload, async () => {
-    await shell.openExternal('https://tailscale.com/download')
+  ipcMain.handle(ipcChannels.installTailscale, (): Promise<TailscaleInstallStatus> => tailscaleSetup().install())
+  ipcMain.handle(ipcChannels.openTailscaleApp, async (): Promise<boolean> => {
+    const applicationPath = findTailscaleApplication()
+    if (!applicationPath) return false
+    return (await shell.openPath(applicationPath)) === ''
   })
   ipcMain.handle(ipcChannels.selectProject, async (): Promise<ProjectCandidate | null> => {
     const options: OpenDialogOptions = {
@@ -221,8 +259,78 @@ function registerIpc(): void {
 function findTailscaleExecutable(): string {
   const candidates = process.platform === 'win32'
     ? ['C:\\Program Files\\Tailscale\\tailscale.exe']
-    : ['/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale']
+    : [
+        '/usr/local/bin/tailscale',
+        '/opt/homebrew/bin/tailscale',
+        '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
+      ]
   return candidates.find(existsSync) ?? 'tailscale'
+}
+
+function addActivity(kind: ActivityKind, state: ActivityState, detail?: string): void {
+  activityStore.add(kind, state, detail)
+}
+
+function recordCoreStatus(status: CoreStatus): void {
+  const activityByPhase: Record<CoreStatus['phase'], [ActivityKind, ActivityState]> = {
+    starting: ['core.starting', 'working'],
+    running: ['core.running', 'success'],
+    stopping: ['core.stopping', 'working'],
+    stopped: ['core.stopped', 'info'],
+    failed: ['core.failed', 'error']
+  }
+  addActivity(...activityByPhase[status.phase])
+}
+
+function recordTunnelStatus(status: TunnelStatus): void {
+  if (status.phase === 'checking') addActivity('tunnel.checking', 'working')
+  else if (status.phase === 'starting') addActivity('tunnel.starting', 'working')
+  else if (status.phase === 'connected') addActivity('tunnel.connected', 'success')
+  else if (status.phase === 'ready' || status.phase === 'stopping') addActivity('tunnel.stopped', 'info')
+  else addActivity('tunnel.failed', 'error')
+}
+
+function recordChatGPTStatus(status: ChatGPTStatus): void {
+  const activityByPhase: Record<ChatGPTStatus['phase'], [ActivityKind, ActivityState]> = {
+    'not-connected': ['chatgpt.disconnected', 'info'],
+    'waiting-request': ['chatgpt.waiting_request', 'working'],
+    'waiting-authorization': ['chatgpt.waiting_authorization', 'working'],
+    configured: ['chatgpt.configured', 'success'],
+    connected: ['chatgpt.connected', 'success'],
+    stale: ['chatgpt.stale', 'error']
+  }
+  addActivity(...activityByPhase[status.phase])
+}
+
+function recordCoreActivity(event: CoreStructuredEvent): void {
+  if (event.event === 'mcp_request') {
+    const methods = Array.isArray(event.jsonRpcMethods)
+      ? event.jsonRpcMethods.filter((method): method is string => typeof method === 'string')
+      : []
+    if (methods.includes('tools/call') && event.sessionIdPresent === true) {
+      const toolNames = Array.isArray(event.toolNames)
+        ? event.toolNames.filter((tool): tool is string => typeof tool === 'string')
+        : []
+      for (const tool of toolNames) toolCallStore.start(tool, event.ts)
+    }
+    return
+  }
+  if (event.event !== 'tool_call') return
+  toolCallStore.complete(event)
+}
+
+function findTailscaleApplication(): string | null {
+  const candidates = process.platform === 'win32'
+    ? ['C:\\Program Files\\Tailscale\\Tailscale.exe']
+    : process.platform === 'darwin'
+      ? ['/Applications/Tailscale.app']
+      : []
+  return candidates.find(existsSync) ?? null
+}
+
+function tailscaleSetup(): TailscaleSetupService {
+  if (!tailscaleSetupService) throw new Error('Tailscale setup service is not initialized')
+  return tailscaleSetupService
 }
 
 function settings(): AppSettingsStore {
@@ -257,6 +365,14 @@ async function applyProjectRoots(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  tailscaleSetupService = new TailscaleSetupService({
+    platform: process.platform,
+    tempDirectory: app.getPath('temp'),
+    openPath: (path) => shell.openPath(path)
+  })
+  tailscaleSetupService.on('status', (status: TailscaleInstallStatus) => {
+    mainWindow?.webContents.send(ipcChannels.tailscaleInstallChanged, status)
+  })
   const emptyWorkspace = join(app.getPath('userData'), 'empty-workspace')
   mkdirSync(emptyWorkspace, { recursive: true, mode: 0o700 })
   try {
@@ -277,6 +393,11 @@ app.whenReady().then(async () => {
   appSettings = await settingsStore.load()
   if (appSettings.launchAtLogin) app.setLoginItemSettings({ openAtLogin: true })
   diagnosticLog = new DiagnosticLogStore({ logsDirectory: join(app.getPath('userData'), 'logs') })
+  for (const event of await diagnosticLog.getReportEvents()) {
+    if (event.message !== 'tool_call') continue
+    const details = event.details && typeof event.details === 'object' && !Array.isArray(event.details) ? event.details : {}
+    toolCallStore.complete({ ...details, ts: event.timestamp, level: event.level, event: 'tool_call' })
+  }
   projectStore = new ProjectStore(join(app.getPath('userData'), 'config', 'projects.json'))
   void projectStore.load().then((projectSnapshot) => {
     const availableRoots = projectSnapshot.projects
@@ -292,18 +413,29 @@ app.whenReady().then(async () => {
     })
     coreService.on('status', (status) => {
       void diagnosticLog?.append(status.phase === 'failed' ? 'error' : 'info', 'core', `Core ${status.phase}`, { port: status.port, errorCode: status.errorCode })
+      recordCoreStatus(status)
       broadcastSnapshot()
     })
     coreService.on('core-event', (event: CoreStructuredEvent) => {
+      recordCoreActivity(event)
       chatgptMonitor.accept(event)
       void diagnosticLog?.append('debug', 'core', event.event, event)
+      broadcastSnapshot()
+    })
+    coreService.on('core-output', (output: CoreProcessOutput) => {
+      void diagnosticLog?.append(output.stream === 'stderr' ? 'error' : 'debug', 'core-process', output.stream, { line: output.line })
+    })
+    coreService.on('core-exit', (exit: CoreProcessExit) => {
+      void diagnosticLog?.append('error', 'core-process', 'Core process exited unexpectedly', exit)
     })
     tunnelController.on('status', (status) => {
       void diagnosticLog?.append(status.phase === 'failed' ? 'error' : 'info', 'tunnel', `Tunnel ${status.phase}`, { errorCode: status.errorCode, publicUrl: status.publicUrl })
+      recordTunnelStatus(status)
       broadcastSnapshot()
     })
     chatgptMonitor.on('status', (status) => {
       void diagnosticLog?.append('info', 'chatgpt', `ChatGPT ${status.phase}`)
+      recordChatGPTStatus(status)
       broadcastSnapshot()
     })
     registerIpc()

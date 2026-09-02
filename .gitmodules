@@ -1,0 +1,3 @@
+[submodule "vendor/devspace"]
+	path = vendor/devspace
+	url = https://github.com/stevetalkai/devspace.git

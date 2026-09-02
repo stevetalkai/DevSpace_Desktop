@@ -11,10 +11,49 @@ export async function writeCoreConfiguration(
   await mkdir(directory, { recursive: true, mode: 0o700 })
   await chmod(directory, 0o700)
 
-  const destination = join(directory, 'config.json')
+  const legacyConfiguration: Record<string, unknown> = { host: '127.0.0.1', port, allowedRoots }
+  if (publicBaseUrl) legacyConfiguration.publicBaseUrl = publicBaseUrl
+
+  const modernConfiguration = {
+    $schema: 'https://raw.githubusercontent.com/Waishnav/devspace/main/schema/v1/devspace.schema.json',
+    configVersion: 1,
+    server: {
+      host: '127.0.0.1',
+      port,
+      ...(publicBaseUrl ? { publicBaseUrl } : {}),
+      allowedHosts: [],
+      trustProxy: false
+    },
+    workspaces: { allowedRoots, worktreeRoot: '~/.devspace/worktrees' },
+    storage: { stateDir: '~/.local/share/devspace' },
+    tools: { mode: 'codex' },
+    ui: { enabled: true },
+    artifacts: { enabled: false, maxFileBytes: 104_857_600 },
+    skills: { enabled: true, paths: [], agentDir: '~/.codex' },
+    subagents: { enabled: false, providers: [] },
+    logging: {
+      level: 'debug',
+      format: 'json',
+      requests: true,
+      assets: false,
+      toolCalls: true,
+      shellCommands: true
+    },
+    oauth: {
+      accessTokenTtlSeconds: 3_600,
+      refreshTokenTtlSeconds: 2_592_000,
+      scopes: ['devspace'],
+      allowedRedirectHosts: ['chatgpt.com', 'localhost', '127.0.0.1']
+    }
+  }
+
+  await writePrivateJson(directory, 'config.json', legacyConfiguration)
+  await writePrivateJson(directory, 'config.jsonc', modernConfiguration)
+}
+
+async function writePrivateJson(directory: string, fileName: string, configuration: unknown): Promise<void> {
+  const destination = join(directory, fileName)
   const temporaryPath = join(directory, `config.${process.pid}.${randomUUID()}.tmp`)
-  const configuration: Record<string, unknown> = { host: '127.0.0.1', port, allowedRoots }
-  if (publicBaseUrl) configuration.publicBaseUrl = publicBaseUrl
   const contents = `${JSON.stringify(configuration, null, 2)}\n`
   let temporaryFile
 

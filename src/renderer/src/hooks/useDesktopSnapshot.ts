@@ -5,6 +5,8 @@ const initialSnapshot: DesktopSnapshot = {
   core: { phase: 'stopped', port: 7676, startedAt: null, errorCode: null, processId: null },
   tunnel: { phase: 'checking', publicUrl: null, mcpUrl: null, errorCode: null },
   chatgpt: { phase: 'not-connected', lastConnectedAt: null },
+  activities: [],
+  toolCalls: [],
   projects: [],
   appVersion: '0.1.0',
   settings: { launchAtLogin: false, locale: null, resumeConnection: false }

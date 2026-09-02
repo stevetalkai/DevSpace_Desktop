@@ -21,7 +21,7 @@ export interface CommandOptions {
 export type CommandExecutor = (executable: string, arguments_: readonly string[], options: CommandOptions) => Promise<CommandResult>
 
 export interface TailscaleTunnelProviderOptions {
-  executablePath?: string
+  executablePath?: string | (() => string)
   execute?: CommandExecutor
   timeoutMs?: number
 }
@@ -30,12 +30,15 @@ export class TailscaleTunnelProvider implements TunnelProvider {
   readonly id = 'tailscale'
   readonly name = 'Tailscale Funnel'
 
-  private readonly executablePath: string
+  private readonly resolveExecutablePath: () => string
   private readonly execute: CommandExecutor
   private readonly timeoutMs: number
 
   constructor(options: TailscaleTunnelProviderOptions = {}) {
-    this.executablePath = options.executablePath ?? 'tailscale'
+    const executablePath = options.executablePath
+    this.resolveExecutablePath = typeof executablePath === 'function'
+      ? executablePath
+      : () => executablePath ?? 'tailscale'
     this.execute = options.execute ?? executeFile
     this.timeoutMs = options.timeoutMs ?? 10_000
   }
@@ -133,13 +136,17 @@ export class TailscaleTunnelProvider implements TunnelProvider {
   }
 
   private run(arguments_: readonly string[]): Promise<CommandResult> {
-    return this.execute(this.executablePath, arguments_, { timeoutMs: this.timeoutMs })
+    return this.execute(this.resolveExecutablePath(), arguments_, { timeoutMs: this.timeoutMs })
   }
 }
 
 function executeFile(executable: string, arguments_: readonly string[], options: CommandOptions): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
-    execFile(executable, [...arguments_], { timeout: options.timeoutMs, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(executable, [...arguments_], {
+      timeout: options.timeoutMs,
+      maxBuffer: 1024 * 1024,
+      env: process.platform === 'darwin' ? { ...process.env, TAILSCALE_BE_CLI: '1' } : process.env
+    }, (error, stdout, stderr) => {
       if (error) {
         Object.assign(error, { stdout, stderr })
         reject(error)

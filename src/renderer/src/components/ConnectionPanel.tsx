@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Copy, ExternalLink, ShieldCheck, Unplug } from 'lucide-react'
+import { AlertCircle, Check, Copy, ShieldCheck, Unplug } from 'lucide-react'
 import type { JSX } from 'react'
 import type { TunnelStatus } from '../../../shared/contracts'
 
@@ -12,7 +12,7 @@ interface ConnectionPanelProps {
   onStart: () => void
   onStop: () => void
   onCopy: () => void
-  onInstall: () => void
+  onSetup: () => void
 }
 
 export function ConnectionPanel(props: ConnectionPanelProps): JSX.Element {
@@ -42,10 +42,10 @@ export function ConnectionPanel(props: ConnectionPanelProps): JSX.Element {
             {props.copied ? props.t('app.common.done') : props.t('app.tailscale.copy_address')}
           </button>
         )}
-        {props.status.phase === 'cli-missing' ? (
-          <button className="secondary-button" onClick={props.onInstall}>
-            <ExternalLink size={16} />
-            {props.t('app.tailscale.install')}
+        {['cli-missing', 'daemon-unavailable', 'not-logged-in', 'offline'].includes(props.status.phase) ? (
+          <button className="secondary-button" onClick={props.onSetup}>
+            <ShieldCheck size={16} />
+            {props.t('app.tailscale.setup.open_wizard')}
           </button>
         ) : connected ? (
           <button className="connection-button connection-button--stop" disabled={busy} onClick={props.onStop}>

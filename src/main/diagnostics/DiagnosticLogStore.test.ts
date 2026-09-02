@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DiagnosticLogStore, formatDiagnosticReport } from './DiagnosticLogStore'
+import { DiagnosticLogStore, formatActivityReport, formatDiagnosticReport } from './DiagnosticLogStore'
 
 const temporaryDirectories: string[] = []
 
@@ -60,8 +60,10 @@ describe('DiagnosticLogStore', () => {
 
     await store.append('error', 'tunnel', 'Unable to start tunnel')
 
-    expect((await stat(logsDirectory)).mode & 0o777).toBe(0o700)
-    expect((await stat(join(logsDirectory, 'diagnostic.log'))).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') {
+      expect((await stat(logsDirectory)).mode & 0o777).toBe(0o700)
+      expect((await stat(join(logsDirectory, 'diagnostic.log'))).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('rotates persisted logs and keeps no more than three files', async () => {
@@ -81,7 +83,7 @@ describe('DiagnosticLogStore', () => {
     expect(files).toEqual(['diagnostic.log', 'diagnostic.log.1', 'diagnostic.log.2'])
     for (const file of files) {
       expect((await stat(join(logsDirectory, file))).size).toBeLessThanOrEqual(180)
-      expect((await stat(join(logsDirectory, file))).mode & 0o777).toBe(0o600)
+      if (process.platform !== 'win32') expect((await stat(join(logsDirectory, file))).mode & 0o777).toBe(0o600)
     }
     expect(await readFile(join(logsDirectory, 'diagnostic.log'), 'utf8')).toContain('event-11-')
   })
@@ -110,5 +112,52 @@ describe('DiagnosticLogStore', () => {
     expect(report).not.toContain('hidden-password')
     expect(report).not.toContain('hidden-auth')
     expect(report).not.toContain('hidden-cookie')
+  })
+
+  it('loads persisted events for reports after creating a new store', async () => {
+    const root = await makeTemporaryDirectory()
+    const logsDirectory = join(root, 'logs')
+    const first = new DiagnosticLogStore({ logsDirectory })
+    await first.append('info', 'core', 'tool_call', { tool: 'read', success: true })
+
+    const reopened = new DiagnosticLogStore({ logsDirectory })
+    expect(await reopened.getReportEvents()).toMatchObject([
+      { source: 'core', message: 'tool_call', details: { tool: 'read', success: true } }
+    ])
+  })
+
+  it('formats a readable activity report with command, result, duration, and redaction', () => {
+    const report = formatActivityReport(
+      { core: { phase: 'running' }, ownerPassword: 'hidden' },
+      [{
+        timestamp: '2026-09-02T12:00:01.000Z',
+        level: 'info',
+        source: 'core',
+        message: 'tool_call',
+        details: {
+          tool: 'exec_command',
+          workspaceId: 'ws_test',
+          commandPreview: 'npm test',
+          durationMs: 42,
+          success: true,
+          accessToken: 'secret-token'
+        }
+      }],
+      '1.2.3',
+      'zh-Hans',
+      new Date('2026-09-02T12:01:00.000Z')
+    )
+
+    expect(report).toContain('# DevSpace 活动报告')
+    expect(report).toContain('exec_command')
+    expect(report).toContain('命令: npm test')
+    expect(report).toContain('42 ms')
+    expect(report).toContain('## 运行概览')
+    expect(report).toContain('| 本地服务 | running |')
+    expect(report).not.toContain('```json')
+    expect(report).not.toContain('ownerPassword')
+    expect(report).not.toContain('accessToken')
+    expect(report).not.toContain('secret-token')
+    expect(report).not.toContain('hidden')
   })
 })

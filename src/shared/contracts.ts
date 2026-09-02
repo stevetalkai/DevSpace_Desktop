@@ -19,12 +19,69 @@ export type TunnelPhase =
   | 'connected'
   | 'stopping'
   | 'failed'
-export type ChatGPTPhase = 'not-connected' | 'waiting-request' | 'waiting-authorization' | 'connected' | 'stale'
+export type ChatGPTPhase = 'not-connected' | 'waiting-request' | 'waiting-authorization' | 'configured' | 'connected' | 'stale'
+
+export type ActivityState = 'working' | 'success' | 'error' | 'info'
+
+export type ActivityKind =
+  | 'core.starting'
+  | 'core.running'
+  | 'core.stopping'
+  | 'core.stopped'
+  | 'core.failed'
+  | 'tunnel.checking'
+  | 'tunnel.starting'
+  | 'tunnel.connected'
+  | 'tunnel.stopped'
+  | 'tunnel.failed'
+  | 'chatgpt.waiting_request'
+  | 'chatgpt.waiting_authorization'
+  | 'chatgpt.configured'
+  | 'chatgpt.connected'
+  | 'chatgpt.stale'
+  | 'chatgpt.disconnected'
+  | 'request.received'
+  | 'request.tool_started'
+  | 'request.completed'
+  | 'request.failed'
+
+export interface ActivityItem {
+  id: string
+  timestamp: string
+  kind: ActivityKind
+  state: ActivityState
+  detail?: string
+}
+
+export type ToolCallState = 'working' | 'success' | 'error'
+
+export interface ToolCallItem {
+  id: string
+  sequence: number
+  timestamp: string
+  completedAt?: string
+  tool: string
+  state: ToolCallState
+  durationMs?: number
+  workspaceId?: string
+  path?: string
+  workingDirectory?: string
+  commandPreview?: string
+  files?: string[]
+  additions?: number
+  removals?: number
+  sessionId?: number
+  running?: boolean
+  exitCode?: number
+  error?: string
+}
 
 export interface DesktopSnapshot {
   core: CoreStatus
   tunnel: TunnelStatus
   chatgpt: ChatGPTStatus
+  activities: ActivityItem[]
+  toolCalls: ToolCallItem[]
   projects: ProjectSummary[]
   appVersion: string
   settings: AppSettingsSnapshot
@@ -46,6 +103,21 @@ export interface TunnelStatus {
   publicUrl: string | null
   mcpUrl: string | null
   errorCode: string | null
+}
+
+export type TailscaleInstallPhase =
+  | 'idle'
+  | 'downloading'
+  | 'opening-installer'
+  | 'installer-opened'
+  | 'unsupported'
+  | 'failed'
+
+export interface TailscaleInstallStatus {
+  phase: TailscaleInstallPhase
+  downloadedBytes: number
+  totalBytes: number | null
+  errorCode: 'download_failed' | 'installer_open_failed' | 'unsupported_platform' | null
 }
 
 export interface ProjectSummary {
@@ -73,6 +145,7 @@ export interface DesktopApi {
   stopCore(): Promise<CoreStatus>
   subscribe(listener: (snapshot: DesktopSnapshot) => void): () => void
   openChatGPT(): Promise<void>
+  openChatGPTDeveloperMode(): Promise<void>
   selectProject(): Promise<ProjectCandidate | null>
   authorizeProject(token: string, confirmHighRisk: boolean): Promise<ProjectMutationResult>
   removeProject(id: string): Promise<ProjectMutationResult>
@@ -85,8 +158,11 @@ export interface DesktopApi {
   setLaunchAtLogin(enabled: boolean): Promise<AppSettingsSnapshot>
   setLocale(locale: 'zh-Hans' | 'en'): Promise<AppSettingsSnapshot>
   copyDiagnostics(): Promise<boolean>
+  exportActivityReport(): Promise<boolean>
   openLogsFolder(): Promise<void>
-  openTailscaleDownload(): Promise<void>
+  installTailscale(): Promise<TailscaleInstallStatus>
+  openTailscaleApp(): Promise<boolean>
+  subscribeTailscaleInstall(listener: (status: TailscaleInstallStatus) => void): () => void
 }
 
 export const ipcChannels = {
@@ -95,6 +171,7 @@ export const ipcChannels = {
   stopCore: 'desktop:stop-core',
   snapshotChanged: 'desktop:snapshot-changed',
   openChatGPT: 'desktop:open-chatgpt',
+  openChatGPTDeveloperMode: 'desktop:open-chatgpt-developer-mode',
   selectProject: 'projects:select',
   authorizeProject: 'projects:authorize',
   removeProject: 'projects:remove',
@@ -107,6 +184,9 @@ export const ipcChannels = {
   setLaunchAtLogin: 'settings:set-launch-at-login',
   setLocale: 'settings:set-locale',
   copyDiagnostics: 'diagnostics:copy',
+  exportActivityReport: 'diagnostics:export-activity-report',
   openLogsFolder: 'diagnostics:open-folder',
-  openTailscaleDownload: 'tunnel:open-download'
+  installTailscale: 'tailscale:install',
+  openTailscaleApp: 'tailscale:open-app',
+  tailscaleInstallChanged: 'tailscale:install-changed'
 } as const

@@ -43,8 +43,10 @@ describe('ProjectStore', () => {
         }
       ]
     })
-    expect((await stat(join(root, 'settings'))).mode & 0o777).toBe(0o700)
-    expect((await stat(configPath)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') {
+      expect((await stat(join(root, 'settings'))).mode & 0o777).toBe(0o700)
+      expect((await stat(configPath)).mode & 0o777).toBe(0o600)
+    }
 
     const reloaded = new ProjectStore(configPath)
     expect((await reloaded.load()).projects).toEqual(saved.projects)
@@ -55,7 +57,7 @@ describe('ProjectStore', () => {
     const projectPath = join(root, 'real-project')
     const aliasPath = join(root, 'project-alias')
     await mkdir(projectPath)
-    await symlink(projectPath, aliasPath)
+    await symlink(projectPath, aliasPath, process.platform === 'win32' ? 'junction' : 'dir')
     const store = new ProjectStore(join(root, 'settings', 'projects.json'), {
       createId: () => 'only-project'
     })
@@ -102,8 +104,10 @@ describe('ProjectStore', () => {
   it('marks the home directory, filesystem root, and volume roots as high risk', async () => {
     expect(isHighRiskProjectPath(homedir())).toBe(true)
     expect(isHighRiskProjectPath('/')).toBe(true)
-    expect(isHighRiskProjectPath('/Volumes/ExternalDisk')).toBe(true)
-    expect(isHighRiskProjectPath('/Volumes/ExternalDisk/work')).toBe(false)
+    if (process.platform === 'darwin') {
+      expect(isHighRiskProjectPath('/Volumes/ExternalDisk')).toBe(true)
+      expect(isHighRiskProjectPath('/Volumes/ExternalDisk/work')).toBe(false)
+    }
 
     const root = await makeTemporaryDirectory()
     const homeStore = new ProjectStore(join(root, 'settings', 'projects.json'), {

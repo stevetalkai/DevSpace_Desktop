@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DesktopApi, DesktopSnapshot } from '../shared/contracts'
+import type { DesktopApi, DesktopSnapshot, TailscaleInstallStatus } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 
 const api: DesktopApi = {
@@ -7,6 +7,7 @@ const api: DesktopApi = {
   startCore: () => ipcRenderer.invoke(ipcChannels.startCore),
   stopCore: () => ipcRenderer.invoke(ipcChannels.stopCore),
   openChatGPT: () => ipcRenderer.invoke(ipcChannels.openChatGPT),
+  openChatGPTDeveloperMode: () => ipcRenderer.invoke(ipcChannels.openChatGPTDeveloperMode),
   selectProject: () => ipcRenderer.invoke(ipcChannels.selectProject),
   authorizeProject: (token, confirmHighRisk) => ipcRenderer.invoke(ipcChannels.authorizeProject, token, confirmHighRisk),
   removeProject: (id) => ipcRenderer.invoke(ipcChannels.removeProject, id),
@@ -19,8 +20,15 @@ const api: DesktopApi = {
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke(ipcChannels.setLaunchAtLogin, enabled),
   setLocale: (locale) => ipcRenderer.invoke(ipcChannels.setLocale, locale),
   copyDiagnostics: () => ipcRenderer.invoke(ipcChannels.copyDiagnostics),
+  exportActivityReport: () => ipcRenderer.invoke(ipcChannels.exportActivityReport),
   openLogsFolder: () => ipcRenderer.invoke(ipcChannels.openLogsFolder),
-  openTailscaleDownload: () => ipcRenderer.invoke(ipcChannels.openTailscaleDownload),
+  installTailscale: () => ipcRenderer.invoke(ipcChannels.installTailscale),
+  openTailscaleApp: () => ipcRenderer.invoke(ipcChannels.openTailscaleApp),
+  subscribeTailscaleInstall: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: TailscaleInstallStatus): void => listener(status)
+    ipcRenderer.on(ipcChannels.tailscaleInstallChanged, handler)
+    return () => ipcRenderer.removeListener(ipcChannels.tailscaleInstallChanged, handler)
+  },
   subscribe: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot): void => listener(snapshot)
     ipcRenderer.on(ipcChannels.snapshotChanged, handler)

@@ -59,6 +59,8 @@ This document records implementation decisions made during autonomous developmen
 - Prefer JSON status output, but keep a conservative text parser for older supported clients. Reject ambiguous output instead of guessing a public address.
 - Display Tailscale Funnel's Beta status persistently in the connection panel and explain that enabling it makes the MCP endpoint publicly reachable.
 - Search the common Homebrew and Windows installation paths before falling back to `PATH`, because apps started from Finder often receive a limited shell path.
+- When Tailscale is missing, show the shared Windows/macOS setup wizard immediately instead of leaving the user on a passive error state. Download the official latest Windows `.exe` or macOS standalone `.pkg` inside DevSpace, show progress, then open the operating-system installer; do not attempt a silent install or bypass the system's administrator confirmation.
+- On macOS, prefer the official standalone package and also detect its bundled CLI under `/Applications/Tailscale.app`. Set `TAILSCALE_BE_CLI=1` when invoking it so the GUI binary runs in CLI mode for status and Funnel commands.
 - Local read-only verification used Tailscale 1.98.5. The CLI was present while its background service was not running; the app correctly reported that exact state. Starting a real public Funnel was intentionally not attempted without a logged-in test Tailnet. Provider tests use injected command results for all start, stop, URL, login, offline, timeout, and malformed-output cases.
 
 ### Owner Password and ChatGPT connection

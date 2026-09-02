@@ -44,6 +44,27 @@ describe('TailscaleTunnelProvider.detect', () => {
     expect(execute).toHaveBeenNthCalledWith(2, '/opt/bin/tailscale', ['status', '--json'], { timeoutMs: 10_000 })
   })
 
+  it('resolves the executable path again after Tailscale is installed', async () => {
+    let installed = false
+    const execute = vi.fn<CommandExecutor>()
+      .mockRejectedValueOnce(commandError('spawn failed', { code: 'ENOENT' }))
+      .mockResolvedValueOnce(success('1.102.3'))
+      .mockResolvedValueOnce(success(onlineStatus))
+    const provider = new TailscaleTunnelProvider({
+      execute,
+      executablePath: () => installed ? 'C:\\Program Files\\Tailscale\\tailscale.exe' : 'tailscale'
+    })
+
+    await expect(provider.detect()).resolves.toMatchObject({ cliInstalled: false, errorCode: 'cli_missing' })
+    installed = true
+    await expect(provider.detect()).resolves.toMatchObject({ cliInstalled: true, online: true, errorCode: null })
+    expect(execute).toHaveBeenLastCalledWith(
+      'C:\\Program Files\\Tailscale\\tailscale.exe',
+      ['status', '--json'],
+      { timeoutMs: 10_000 }
+    )
+  })
+
   it.each([
     ['cli_missing', commandError('spawn failed', { code: 'ENOENT' }), false],
     ['timeout', commandError('timed out', { killed: true }), true]

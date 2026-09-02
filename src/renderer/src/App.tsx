@@ -1,14 +1,18 @@
-import { useMemo, useState, type JSX } from 'react'
-import { Bot, ChevronRight, CircleEllipsis, FolderPlus, Languages, Link2, Power, Server } from 'lucide-react'
+import { useEffect, useMemo, useState, type JSX } from 'react'
+import { Bot, CheckCircle2, ChevronRight, CircleEllipsis, FolderPlus, Languages, Link2, Power, Server } from 'lucide-react'
 import { StatusCard } from './components/StatusCard'
 import { ProjectList } from './components/ProjectList'
 import { RiskDialog } from './components/RiskDialog'
 import { ConnectionPanel } from './components/ConnectionPanel'
 import { ChatGPTWizard } from './components/ChatGPTWizard'
 import { AdvancedPanel } from './components/AdvancedPanel'
+import { TailscaleSetupWizard } from './components/TailscaleSetupWizard'
+import { OnboardingGuide } from './components/OnboardingGuide'
+import { ActivityPanel } from './components/ActivityPanel'
+import { ToolCallPanel } from './components/ToolCallPanel'
 import { useDesktopSnapshot } from './hooks/useDesktopSnapshot'
 import { resolveLocale, saveLocale, translate, type Locale } from './locales/locales'
-import type { ChatGPTPhase, ProjectCandidate, ProjectMutationResult, ServicePhase, TunnelPhase } from '../../shared/contracts'
+import type { ChatGPTPhase, ProjectCandidate, ProjectMutationResult, ServicePhase, TailscaleInstallStatus, TunnelPhase } from '../../shared/contracts'
 
 type Tone = 'positive' | 'quiet' | 'negative' | 'working'
 
@@ -65,6 +69,7 @@ const chatgptStatusKey: Record<ChatGPTPhase, string> = {
   'not-connected': 'app.chatgpt.not_connected',
   'waiting-request': 'app.chatgpt.wizard.status.waiting_for_request',
   'waiting-authorization': 'app.chatgpt.wizard.status.waiting_for_authorization',
+  configured: 'app.chatgpt.configured',
   connected: 'app.chatgpt.connected',
   stale: 'app.chatgpt.wizard.status.expired'
 }
@@ -73,6 +78,7 @@ const chatgptTone: Record<ChatGPTPhase, Tone> = {
   'not-connected': 'quiet',
   'waiting-request': 'working',
   'waiting-authorization': 'working',
+  configured: 'positive',
   connected: 'positive',
   stale: 'negative'
 }
@@ -86,10 +92,37 @@ export function App(): JSX.Element {
   const [addressCopied, setAddressCopied] = useState(false)
   const [chatgptWizardOpen, setChatgptWizardOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [tailscaleSetupOpen, setTailscaleSetupOpen] = useState(false)
+  const [tailscaleSetupPrompted, setTailscaleSetupPrompted] = useState(false)
+  const [tailscaleDetecting, setTailscaleDetecting] = useState(false)
+  const [tailscaleInstall, setTailscaleInstall] = useState<TailscaleInstallStatus>({
+    phase: 'idle',
+    downloadedBytes: 0,
+    totalBytes: null,
+    errorCode: null
+  })
   const { snapshot, pending, startCore, stopCore } = useDesktopSnapshot()
   const t = useMemo(() => (key: string, ...values: Array<string | number>) => translate(key, locale, ...values), [locale])
   const coreRunning = snapshot.core.phase === 'running'
   const chatgptReady = coreRunning && snapshot.tunnel.phase === 'connected' && Boolean(snapshot.tunnel.mcpUrl)
+  const fullyReady = chatgptReady && ['configured', 'connected'].includes(snapshot.chatgpt.phase)
+
+  useEffect(() => window.devspace.subscribeTailscaleInstall(setTailscaleInstall), [])
+
+  useEffect(() => {
+    if (snapshot.tunnel.phase === 'cli-missing' && !tailscaleSetupPrompted) {
+      setTailscaleSetupPrompted(true)
+      setTailscaleSetupOpen(true)
+    }
+  }, [snapshot.tunnel.phase, tailscaleSetupPrompted])
+
+  useEffect(() => {
+    if (!tailscaleSetupOpen) return undefined
+    const shouldPoll = tailscaleInstall.phase === 'installer-opened' || ['daemon-unavailable', 'not-logged-in', 'offline'].includes(snapshot.tunnel.phase)
+    if (!shouldPoll) return undefined
+    const timer = window.setInterval(() => { void window.devspace.detectTunnel() }, 2_500)
+    return () => window.clearInterval(timer)
+  }, [snapshot.tunnel.phase, tailscaleInstall.phase, tailscaleSetupOpen])
 
   const changeLocale = (next: Locale): void => {
     saveLocale(next)
@@ -162,6 +195,31 @@ export function App(): JSX.Element {
     setChatgptWizardOpen(true)
   }
 
+  const openChatGPTOrSetup = async (): Promise<void> => {
+    if (snapshot.chatgpt.phase === 'configured' || snapshot.chatgpt.phase === 'connected') {
+      await window.devspace.openChatGPT()
+      return
+    }
+    await openChatGPTWizard()
+  }
+
+  const installTailscale = async (): Promise<void> => {
+    setTailscaleInstall(await window.devspace.installTailscale())
+  }
+
+  const openTailscaleApp = async (): Promise<void> => {
+    await window.devspace.openTailscaleApp()
+  }
+
+  const detectTailscale = async (): Promise<void> => {
+    setTailscaleDetecting(true)
+    try {
+      await window.devspace.detectTunnel()
+    } finally {
+      setTailscaleDetecting(false)
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -184,15 +242,39 @@ export function App(): JSX.Element {
             <h1>{t('app.home.title')}</h1>
             <p className="hero__copy">{t('app.home.subtitle')}</p>
           </div>
-          <button
-            className={`service-control ${coreRunning ? 'service-control--stop' : ''}`}
-            disabled={pending || snapshot.core.phase === 'starting' || snapshot.core.phase === 'stopping'}
-            onClick={() => void (coreRunning ? stopCore() : startCore())}
-          >
-            <Power size={18} />
-            {t(coreRunning ? 'app.service.stop' : 'app.service.start')}
-          </button>
+          <div className="hero__actions">
+            {fullyReady && (
+              <div className="ready-badge" role="status">
+                <CheckCircle2 size={18} />
+                <div>
+                  <strong>{t('app.ready.title')}</strong>
+                  <span>{t(snapshot.chatgpt.phase === 'connected' ? 'app.ready.connected_description' : 'app.ready.configured_description')}</span>
+                </div>
+              </div>
+            )}
+            <button
+              className={`service-control ${coreRunning ? 'service-control--stop' : ''}`}
+              disabled={pending || snapshot.core.phase === 'starting' || snapshot.core.phase === 'stopping'}
+              onClick={() => void (coreRunning ? stopCore() : startCore())}
+            >
+              <Power size={18} />
+              {t(coreRunning ? 'app.service.stop' : 'app.service.start')}
+            </button>
+          </div>
         </section>
+
+        <OnboardingGuide
+          coreRunning={coreRunning}
+          coreBusy={pending || snapshot.core.phase === 'starting' || snapshot.core.phase === 'stopping'}
+          tunnel={snapshot.tunnel}
+          tunnelBusy={tunnelPending}
+          chatgpt={snapshot.chatgpt}
+          t={t}
+          onStartCore={() => void startCore()}
+          onSetupTailscale={() => setTailscaleSetupOpen(true)}
+          onStartTunnel={() => void runTunnel(() => window.devspace.startTunnel())}
+          onOpenChatGPT={() => void openChatGPTWizard()}
+        />
 
         <section className="status-grid" aria-label={t('app.status.title')}>
           <StatusCard
@@ -218,6 +300,20 @@ export function App(): JSX.Element {
           />
         </section>
 
+        <ActivityPanel
+          items={snapshot.activities}
+          locale={locale}
+          t={t}
+          onOpenDetails={() => setAdvancedOpen(true)}
+        />
+
+        <ToolCallPanel
+          items={snapshot.toolCalls}
+          locale={locale}
+          t={t}
+          onExportReport={() => window.devspace.exportActivityReport()}
+        />
+
         <ConnectionPanel
           status={snapshot.tunnel}
           coreRunning={coreRunning}
@@ -228,7 +324,7 @@ export function App(): JSX.Element {
           onStart={() => void runTunnel(() => window.devspace.startTunnel())}
           onStop={() => void runTunnel(() => window.devspace.stopTunnel())}
           onCopy={() => void copyMcpUrl()}
-          onInstall={() => void window.devspace.openTailscaleDownload()}
+          onSetup={() => setTailscaleSetupOpen(true)}
         />
 
         <section className="workspace-panel">
@@ -268,7 +364,7 @@ export function App(): JSX.Element {
             {t('app.advanced.title')}
           </button>
           <div className="version">v{snapshot.appVersion} · {t('app.footer.local_first')}</div>
-          <button className="primary-button" disabled={!chatgptReady} onClick={() => void openChatGPTWizard()}>
+          <button className="primary-button" disabled={!chatgptReady} onClick={() => void openChatGPTOrSetup()}>
             {t('app.chatgpt.open')}
             <ChevronRight size={18} />
           </button>
@@ -291,6 +387,18 @@ export function App(): JSX.Element {
           status={snapshot.chatgpt}
           t={t}
           onClose={() => setChatgptWizardOpen(false)}
+        />
+      )}
+      {tailscaleSetupOpen && (
+        <TailscaleSetupWizard
+          tunnel={snapshot.tunnel}
+          install={tailscaleInstall}
+          detecting={tailscaleDetecting}
+          t={t}
+          onInstall={() => void installTailscale()}
+          onOpenApp={() => void openTailscaleApp()}
+          onDetect={() => void detectTailscale()}
+          onClose={() => setTailscaleSetupOpen(false)}
         />
       )}
       {advancedOpen && <AdvancedPanel snapshot={snapshot} t={t} onClose={() => setAdvancedOpen(false)} />}
