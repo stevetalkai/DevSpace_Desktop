@@ -1,5 +1,5 @@
-import { useState, type JSX } from 'react'
-import { AlertTriangle, Check, ChevronDown, ChevronUp, CircleEllipsis, Info, LoaderCircle } from 'lucide-react'
+import type { JSX } from 'react'
+import { AlertTriangle, Check, CircleEllipsis, Info, LoaderCircle } from 'lucide-react'
 import type { ActivityItem, ActivityKind } from '../../../shared/contracts'
 import type { Locale } from '../locales/locales'
 
@@ -53,15 +53,14 @@ function icon(item: ActivityItem): JSX.Element {
 }
 
 export function ActivityPanel({ items, locale, t, onOpenDetails }: ActivityPanelProps): JSX.Element {
-  const [open, setOpen] = useState(true)
-  const recentItems = items.slice(-6).reverse()
+  const recentItems = items.slice().reverse()
   const latestWorking = recentItems.some((item) => item.state === 'working')
   const timeFormatter = new Intl.DateTimeFormat(locale === 'zh-Hans' ? 'zh-CN' : 'en', {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
   })
 
   return (
-    <section className={`activity-panel ${open ? 'activity-panel--open' : ''}`} aria-labelledby="activity-title">
+    <section className="activity-panel activity-panel--page" aria-labelledby="activity-title">
       <header>
         <div className="activity-panel__heading">
           <span><CircleEllipsis size={18} /></span>
@@ -73,13 +72,8 @@ export function ActivityPanel({ items, locale, t, onOpenDetails }: ActivityPanel
         <div className={`activity-live ${latestWorking ? 'activity-live--working' : ''}`}>
           <i /> {t(latestWorking ? 'app.activity.working' : 'app.activity.live')}
         </div>
-        <button className="activity-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={t(open ? 'app.activity.collapse' : 'app.activity.expand')}>
-          {open ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
-        </button>
       </header>
-      {open && (
-        <>
-          {recentItems.length === 0 ? (
+      {recentItems.length === 0 ? (
             <p className="activity-empty">{t('app.activity.empty')}</p>
           ) : (
             <ol className="activity-list">
@@ -99,11 +93,9 @@ export function ActivityPanel({ items, locale, t, onOpenDetails }: ActivityPanel
               })}
             </ol>
           )}
-          <div className="activity-actions">
-            <button className="activity-details" onClick={onOpenDetails}>{t('app.activity.open_details')}</button>
-          </div>
-        </>
-      )}
+      <div className="activity-actions">
+        <button className="activity-details" onClick={onOpenDetails}>{t('app.activity.open_details')}</button>
+      </div>
     </section>
   )
 }

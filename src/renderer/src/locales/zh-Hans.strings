@@ -220,6 +220,10 @@
 "app.settings.launch_at_login.off" = "已关闭开机启动";
 "app.diagnostics.title" = "诊断";
 "app.activity.title" = "最近活动";
+"app.tabs.label" = "主导航";
+"app.tabs.overview" = "概览";
+"app.tabs.activity" = "最近活动";
+"app.tabs.tool_calls" = "工具调用";
 "app.activity.description" = "了解 DevSpace 正在处理什么；这里不会展示密码或访问令牌。";
 "app.activity.live" = "实时更新";
 "app.activity.working" = "正在工作";

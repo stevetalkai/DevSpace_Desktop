@@ -15,11 +15,10 @@ const writeTools = new Set(['write', 'edit', 'apply_patch', 'exec_command', 'wri
 const commandTools = new Set(['exec_command', 'write_stdin', 'bash'])
 
 export function ToolCallPanel({ items, locale, t, onExportReport }: ToolCallPanelProps): JSX.Element {
-  const [open, setOpen] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState(false)
-  const visibleItems = items.slice(-50).reverse()
+  const visibleItems = items.slice().reverse()
   const working = visibleItems.filter((item) => item.state === 'working').length
   const timeFormatter = new Intl.DateTimeFormat(locale === 'zh-Hans' ? 'zh-CN' : 'en', {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
@@ -45,7 +44,7 @@ export function ToolCallPanel({ items, locale, t, onExportReport }: ToolCallPane
   }
 
   return (
-    <section className={`tool-call-panel ${open ? 'tool-call-panel--open' : ''}`} aria-labelledby="tool-call-title">
+    <section className="tool-call-panel tool-call-panel--page" aria-labelledby="tool-call-title">
       <header>
         <div className="tool-call-panel__heading">
           <span><Wrench size={18} /></span>
@@ -57,13 +56,8 @@ export function ToolCallPanel({ items, locale, t, onExportReport }: ToolCallPane
         <div className={`tool-call-summary ${working > 0 ? 'tool-call-summary--working' : ''}`}>
           <i /> {working > 0 ? t('app.tool_calls.working', working) : t('app.tool_calls.count', visibleItems.length)}
         </div>
-        <button className="activity-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={t(open ? 'app.tool_calls.collapse' : 'app.tool_calls.expand')}>
-          {open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
-        </button>
       </header>
-      {open && (
-        <>
-          {visibleItems.length === 0 ? (
+      {visibleItems.length === 0 ? (
             <p className="tool-call-empty">{t('app.tool_calls.empty')}</p>
           ) : (
             <ol className="tool-call-list">
@@ -93,13 +87,11 @@ export function ToolCallPanel({ items, locale, t, onExportReport }: ToolCallPane
               })}
             </ol>
           )}
-          <div className="tool-call-actions">
-            <button className="activity-details" disabled={exporting} onClick={() => void exportReport()}>
-              <Download size={13} />{t(exported ? 'app.activity.report.exported' : 'app.activity.report.export')}
-            </button>
-          </div>
-        </>
-      )}
+      <div className="tool-call-actions">
+        <button className="activity-details" disabled={exporting} onClick={() => void exportReport()}>
+          <Download size={13} />{t(exported ? 'app.activity.report.exported' : 'app.activity.report.export')}
+        </button>
+      </div>
     </section>
   )
 }

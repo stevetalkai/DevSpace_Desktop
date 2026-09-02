@@ -220,6 +220,10 @@
 "app.settings.launch_at_login.off" = "Launch at login is off";
 "app.diagnostics.title" = "Diagnostics";
 "app.activity.title" = "Recent activity";
+"app.tabs.label" = "Main navigation";
+"app.tabs.overview" = "Overview";
+"app.tabs.activity" = "Recent activity";
+"app.tabs.tool_calls" = "Tool calls";
 "app.activity.description" = "See what DevSpace is handling. Passwords and access tokens are never shown here.";
 "app.activity.live" = "Live";
 "app.activity.working" = "Working";

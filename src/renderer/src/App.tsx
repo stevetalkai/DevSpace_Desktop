@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
-import { Bot, CheckCircle2, ChevronRight, CircleEllipsis, FolderPlus, Languages, Link2, Power, Server } from 'lucide-react'
+import { Activity, Bot, CheckCircle2, ChevronRight, CircleEllipsis, FolderPlus, Languages, LayoutDashboard, Link2, Power, Server, Wrench } from 'lucide-react'
 import { StatusCard } from './components/StatusCard'
 import { ProjectList } from './components/ProjectList'
 import { RiskDialog } from './components/RiskDialog'
@@ -15,6 +15,7 @@ import { resolveLocale, saveLocale, translate, type Locale } from './locales/loc
 import type { ChatGPTPhase, ProjectCandidate, ProjectMutationResult, ServicePhase, TailscaleInstallStatus, TunnelPhase } from '../../shared/contracts'
 
 type Tone = 'positive' | 'quiet' | 'negative' | 'working'
+type AppTab = 'overview' | 'activity' | 'tools'
 
 const projectErrorKey: Record<Exclude<ProjectMutationResult, { ok: true }>['errorCode'], string> = {
   candidate_expired: 'app.project.candidate_expired',
@@ -85,6 +86,7 @@ const chatgptTone: Record<ChatGPTPhase, Tone> = {
 
 export function App(): JSX.Element {
   const [locale, setLocale] = useState<Locale>(() => resolveLocale({ storage: localStorage }))
+  const [activeTab, setActiveTab] = useState<AppTab>('overview')
   const [projectCandidate, setProjectCandidate] = useState<ProjectCandidate | null>(null)
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
@@ -106,6 +108,8 @@ export function App(): JSX.Element {
   const coreRunning = snapshot.core.phase === 'running'
   const chatgptReady = coreRunning && snapshot.tunnel.phase === 'connected' && Boolean(snapshot.tunnel.mcpUrl)
   const fullyReady = chatgptReady && ['configured', 'connected'].includes(snapshot.chatgpt.phase)
+  const activityWorking = snapshot.activities.some((item) => item.state === 'working')
+  const toolCallsWorking = snapshot.toolCalls.some((item) => item.state === 'working')
 
   useEffect(() => window.devspace.subscribeTailscaleInstall(setTailscaleInstall), [])
 
@@ -227,6 +231,22 @@ export function App(): JSX.Element {
           <span className="brand__mark"><span /></span>
           <span>{t('app.name')}</span>
         </div>
+        <nav className="primary-tabs" aria-label={t('app.tabs.label')}>
+          <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')} aria-current={activeTab === 'overview' ? 'page' : undefined}>
+            <LayoutDashboard size={15} />
+            {t('app.tabs.overview')}
+          </button>
+          <button className={activeTab === 'activity' ? 'active' : ''} onClick={() => setActiveTab('activity')} aria-current={activeTab === 'activity' ? 'page' : undefined}>
+            <Activity size={15} />
+            {t('app.tabs.activity')}
+            {snapshot.activities.length > 0 && <span className={`tab-badge ${activityWorking ? 'tab-badge--working' : ''}`}>{Math.min(snapshot.activities.length, 99)}</span>}
+          </button>
+          <button className={activeTab === 'tools' ? 'active' : ''} onClick={() => setActiveTab('tools')} aria-current={activeTab === 'tools' ? 'page' : undefined}>
+            <Wrench size={15} />
+            {t('app.tabs.tool_calls')}
+            {snapshot.toolCalls.length > 0 && <span className={`tab-badge ${toolCallsWorking ? 'tab-badge--working' : ''}`}>{Math.min(snapshot.toolCalls.length, 99)}</span>}
+          </button>
+        </nav>
         <div className="language-switch" aria-label={t('app.settings.language')}>
           <Languages size={15} />
           <button className={locale === 'zh-Hans' ? 'active' : ''} onClick={() => changeLocale('zh-Hans')}>{t('app.settings.language.chinese_short')}</button>
@@ -235,8 +255,9 @@ export function App(): JSX.Element {
         </div>
       </header>
 
-      <main>
-        <section className="hero">
+      <main className={`app-main app-main--${activeTab}`}>
+        {activeTab === 'overview' && <>
+          <section className="hero">
           <div>
             <p className="eyebrow">{t('app.status.title')}</p>
             <h1>{t('app.home.title')}</h1>
@@ -300,21 +321,7 @@ export function App(): JSX.Element {
           />
         </section>
 
-        <ActivityPanel
-          items={snapshot.activities}
-          locale={locale}
-          t={t}
-          onOpenDetails={() => setAdvancedOpen(true)}
-        />
-
-        <ToolCallPanel
-          items={snapshot.toolCalls}
-          locale={locale}
-          t={t}
-          onExportReport={() => window.devspace.exportActivityReport()}
-        />
-
-        <ConnectionPanel
+          <ConnectionPanel
           status={snapshot.tunnel}
           coreRunning={coreRunning}
           pending={tunnelPending}
@@ -327,7 +334,7 @@ export function App(): JSX.Element {
           onSetup={() => setTailscaleSetupOpen(true)}
         />
 
-        <section className="workspace-panel">
+          <section className="workspace-panel">
           <div className="section-heading">
             <div>
               <p className="eyebrow">{t('app.project.security_label')}</p>
@@ -358,7 +365,7 @@ export function App(): JSX.Element {
           )}
         </section>
 
-        <footer className="action-bar">
+          <footer className="action-bar">
           <button className="text-button" onClick={() => setAdvancedOpen(true)}>
             <CircleEllipsis size={17} />
             {t('app.advanced.title')}
@@ -368,7 +375,26 @@ export function App(): JSX.Element {
             {t('app.chatgpt.open')}
             <ChevronRight size={18} />
           </button>
-        </footer>
+          </footer>
+        </>}
+
+        {activeTab === 'activity' && (
+          <ActivityPanel
+            items={snapshot.activities}
+            locale={locale}
+            t={t}
+            onOpenDetails={() => setAdvancedOpen(true)}
+          />
+        )}
+
+        {activeTab === 'tools' && (
+          <ToolCallPanel
+            items={snapshot.toolCalls}
+            locale={locale}
+            t={t}
+            onExportReport={() => window.devspace.exportActivityReport()}
+          />
+        )}
       </main>
       {projectCandidate && (
         <RiskDialog
