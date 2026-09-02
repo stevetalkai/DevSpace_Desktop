@@ -78,7 +78,9 @@ export function ToolCallPanel({ items, locale, t, onExportReport }: ToolCallPane
                       <span className="tool-call-item__result">
                         {item.state === 'working' ? <LoaderCircle size={13} className="spin" /> : item.state === 'success' ? <Check size={13} /> : <AlertTriangle size={13} />}
                         <span>{item.state === 'working' ? t('app.tool_calls.state.working') : item.state === 'success' ? t('app.tool_calls.state.success') : t('app.tool_calls.state.error')}</span>
-                        <time dateTime={item.timestamp}>{formatDuration(item.durationMs)}</time>
+                        <time dateTime={item.timestamp}>
+                          {timeFormatter.format(new Date(item.timestamp))} · {formatDuration(item.durationMs)}
+                        </time>
                       </span>
                     </button>
                     {isExpanded && <ToolCallDetails item={item} time={timeFormatter.format(new Date(item.timestamp))} t={t} />}

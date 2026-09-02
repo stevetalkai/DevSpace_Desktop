@@ -180,8 +180,8 @@ h1 { margin-bottom: 8px; font: 500 clamp(34px, 4vw, 48px)/1.05 "Iowan Old Style"
 .tool-call-item__title code { color: #3d5450; font: 600 11.5px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .tool-call-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 .tool-call-badges small { padding: 2px 6px; color: var(--muted); background: rgba(255,255,255,.55); border: 1px solid rgba(28,36,32,.16); border-radius: 999px; font-size: 8.5px; line-height: 1.2; }
-.tool-call-item__result { min-width: 104px; display: grid; grid-template-columns: 14px auto; align-items: center; justify-content: end; column-gap: 4px; color: var(--green); font-size: 9px; font-weight: 700; }
-.tool-call-item__result time { grid-column: 1 / -1; margin-top: 4px; color: #92978f; font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: right; }
+.tool-call-item__result { min-width: 132px; display: grid; grid-template-columns: 14px auto; align-items: center; justify-content: end; column-gap: 4px; color: var(--green); font-size: 9px; font-weight: 700; }
+.tool-call-item__result time { grid-column: 1 / -1; margin-top: 4px; color: #92978f; font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: right; white-space: nowrap; }
 .tool-call-item--working .tool-call-item__result { color: var(--amber); }
 .tool-call-item--error .tool-call-item__result { color: var(--rust); }
 .tool-call-details { margin: -1px 16px 10px 43px; overflow: hidden; background: rgba(235,232,224,.72); border: 1px solid rgba(28,36,32,.08); border-radius: 9px; }

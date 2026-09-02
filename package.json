@@ -10,7 +10,7 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-rebuild -f --only better-sqlite3",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "preview": "electron-vite preview",
@@ -22,7 +22,7 @@
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
-    "@waishnav/devspace": "1.0.8",
+    "@waishnav/devspace": "git+https://github.com/stevetalkai/devspace.git#9fcc5d1c49fd6cafc9e26a3e605d569d044e2b15",
     "lucide-react": "1.39.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -56,6 +56,7 @@
     "files": [
       "out/**",
       "node_modules/@waishnav/devspace/**",
+      "!node_modules/@anthropic-ai/claude-agent-sdk*/**",
       "package.json"
     ],
     "mac": {
