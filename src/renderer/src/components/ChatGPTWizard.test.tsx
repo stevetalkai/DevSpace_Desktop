@@ -35,7 +35,7 @@ describe('ChatGPTWizard', () => {
     expect(html).toContain('app.chatgpt.wizard.authorization_requested_title')
     expect(html).toContain('app.chatgpt.wizard.authorization_requested_description')
     expect(html.match(/app\.chatgpt\.wizard\.copy_owner_password/g)).toHaveLength(2)
-    expect(html.match(/wizard-action wizard-action--primary/g)).toHaveLength(4)
+    expect(html.match(/wizard-action wizard-action--primary/g)).toHaveLength(6)
   })
 })
 

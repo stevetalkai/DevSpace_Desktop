@@ -125,7 +125,7 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
               <h3>{t('app.chatgpt.wizard.step.copy_address')}</h3>
               <p>{t('app.chatgpt.wizard.copy_address_description')}</p>
               <code>{mcpUrl}</code>
-              <button className="wizard-action" onClick={() => void copyAddress()}>
+              <button className="wizard-action wizard-action--primary" onClick={() => void copyAddress()}>
                 <Copy size={15} />
                 {t('app.chatgpt.wizard.copy_address')}
               </button>
@@ -176,7 +176,7 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
                 <p>{t('app.chatgpt.wizard.url_entry_description')}</p>
                 <div>
                   <code>{mcpUrl}</code>
-                  <button className="wizard-action" onClick={() => void copyAddress()}>
+                  <button className="wizard-action wizard-action--primary" onClick={() => void copyAddress()}>
                     <Copy size={14} />
                     {t('app.chatgpt.wizard.copy_address')}
                   </button>
