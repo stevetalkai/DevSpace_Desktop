@@ -12,6 +12,7 @@ import { ActivityPanel } from './components/ActivityPanel'
 import { ToolCallPanel } from './components/ToolCallPanel'
 import { useDesktopSnapshot } from './hooks/useDesktopSnapshot'
 import { resolveLocale, saveLocale, translate, type Locale } from './locales/locales'
+import appIcon from './assets/app-icon.png'
 import type { ChatGPTPhase, ProjectCandidate, ProjectMutationResult, ServicePhase, TailscaleInstallStatus, TunnelPhase } from '../../shared/contracts'
 
 type Tone = 'positive' | 'quiet' | 'negative' | 'working'
@@ -226,7 +227,7 @@ export function App(): JSX.Element {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand" aria-label={t('app.name')}>
-          <span className="brand__mark"><span /></span>
+          <img className="brand__mark" src={appIcon} alt="" aria-hidden="true" />
           <span>{t('app.name')}</span>
         </div>
         <nav className="primary-tabs" aria-label={t('app.tabs.label')}>

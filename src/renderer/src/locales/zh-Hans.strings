@@ -1,7 +1,7 @@
 /* DevSpace Desktop — 简体中文 */
 "app.name" = "DevSpace Desktop";
-"app.home.title" = "你的开发空间";
-"app.home.subtitle" = "管理本地服务，并安全地连接到 ChatGPT。";
+"app.home.title" = "让 ChatGPT 网页版安全访问本机项目";
+"app.home.subtitle" = "管理本地服务，并安全地连接到 ChatGPT 网页版。";
 "app.ready.title" = "已就绪";
 "app.ready.description" = "可以开始工作";
 "app.ready.connected_description" = "ChatGPT 当前已连接，可以开始工作";

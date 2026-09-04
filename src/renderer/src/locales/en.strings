@@ -1,7 +1,7 @@
 /* DevSpace Desktop — English */
 "app.name" = "DevSpace Desktop";
-"app.home.title" = "Your development space";
-"app.home.subtitle" = "Manage your local service and connect it to ChatGPT securely.";
+"app.home.title" = "Give ChatGPT on the web secure access to local projects";
+"app.home.subtitle" = "Manage your local service and connect it securely to ChatGPT on the web.";
 "app.ready.title" = "Ready";
 "app.ready.description" = "Ready to work";
 "app.ready.connected_description" = "ChatGPT is connected and ready to work";
