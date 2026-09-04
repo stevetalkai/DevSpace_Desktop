@@ -29,6 +29,30 @@ describe('TunnelController', () => {
     await expect(controller.detect()).resolves.toMatchObject({ phase: 'daemon-unavailable', errorCode: 'daemon_unavailable' })
   })
 
+  it.each(['proxy_dns_conflict', 'coordination_unavailable'] as const)(
+    'maps %s to the network guidance phase',
+    async (errorCode) => {
+      const controller = new TunnelController(provider({
+        detect: async () => ({ cliInstalled: true, daemonAvailable: true, loggedIn: false, online: false, dnsName: null, errorCode })
+      }), runningCore)
+      await expect(controller.detect()).resolves.toMatchObject({ phase: 'coordination-unavailable', errorCode })
+    }
+  )
+
+  it('keeps the last stable state while a background detection is pending', async () => {
+    let finishDetection: ((value: Awaited<ReturnType<TunnelProvider['detect']>>) => void) | undefined
+    const detect = vi.fn<TunnelProvider['detect']>()
+      .mockResolvedValueOnce({ cliInstalled: true, daemonAvailable: false, loggedIn: false, online: false, dnsName: null, errorCode: 'daemon_unavailable' })
+      .mockImplementationOnce(() => new Promise((resolve) => { finishDetection = resolve }))
+    const controller = new TunnelController(provider({ detect }), runningCore)
+    await controller.detect()
+
+    const pendingDetection = controller.detect()
+    expect(controller.getStatus().phase).toBe('daemon-unavailable')
+    finishDetection?.({ cliInstalled: true, daemonAvailable: true, loggedIn: false, online: false, dnsName: null, errorCode: 'not_logged_in' })
+    await expect(pendingDetection).resolves.toMatchObject({ phase: 'not-logged-in' })
+  })
+
   it('does not reuse a Funnel that points to a different local port', async () => {
     const controller = new TunnelController(provider({
       status: async () => ({ state: 'running', localPort: 7677, publicUrl: 'https://mac.ts.net/mcp', errorCode: null })

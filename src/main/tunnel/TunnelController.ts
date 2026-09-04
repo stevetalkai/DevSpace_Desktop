@@ -19,7 +19,6 @@ export class TunnelController extends EventEmitter {
   }
 
   async detect(): Promise<TunnelStatus> {
-    this.update({ phase: 'checking', publicUrl: null, mcpUrl: null, errorCode: null })
     const environment = await this.provider.detect()
     if (environment.errorCode) {
       await this.onPublicUrlChanged(null)
@@ -86,6 +85,7 @@ function fromError(errorCode: TunnelErrorCode): TunnelStatus {
   let phase: TunnelPhase = 'failed'
   if (errorCode === 'cli_missing') phase = 'cli-missing'
   else if (errorCode === 'daemon_unavailable') phase = 'daemon-unavailable'
+  else if (errorCode === 'proxy_dns_conflict' || errorCode === 'coordination_unavailable') phase = 'coordination-unavailable'
   else if (errorCode === 'not_logged_in') phase = 'not-logged-in'
   else if (errorCode === 'offline') phase = 'offline'
   return { phase, publicUrl: null, mcpUrl: null, errorCode }

@@ -3,6 +3,8 @@ export type TunnelErrorCode =
   | 'daemon_unavailable'
   | 'not_logged_in'
   | 'offline'
+  | 'proxy_dns_conflict'
+  | 'coordination_unavailable'
   | 'unsupported'
   | 'funnel_failed'
   | 'invalid_output'

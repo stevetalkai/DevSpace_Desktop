@@ -9,7 +9,8 @@ const initialSnapshot: DesktopSnapshot = {
   toolCalls: [],
   projects: [],
   appVersion: '0.1.0',
-  settings: { launchAtLogin: false, locale: null, resumeConnection: false }
+  settings: { launchAtLogin: false, locale: null, resumeConnection: false },
+  tailscaleApplicationInstalled: false
 }
 export function useDesktopSnapshot(): {
   snapshot: DesktopSnapshot

@@ -8,6 +8,7 @@ import {
   type TunnelStatus
 } from './TunnelProvider'
 import { parseFunnelJson, parseFunnelText, parseTailscaleStatus } from './TailscaleStatusParser'
+import { checkTailscaleConnectivity, type TailscaleConnectivityResult } from './TailscaleConnectivityCheck'
 
 export interface CommandResult {
   stdout: string
@@ -23,6 +24,7 @@ export type CommandExecutor = (executable: string, arguments_: readonly string[]
 export interface TailscaleTunnelProviderOptions {
   executablePath?: string | (() => string)
   execute?: CommandExecutor
+  checkConnectivity?: () => Promise<TailscaleConnectivityResult>
   timeoutMs?: number
 }
 
@@ -32,6 +34,7 @@ export class TailscaleTunnelProvider implements TunnelProvider {
 
   private readonly resolveExecutablePath: () => string
   private readonly execute: CommandExecutor
+  private readonly checkConnectivity: () => Promise<TailscaleConnectivityResult>
   private readonly timeoutMs: number
 
   constructor(options: TailscaleTunnelProviderOptions = {}) {
@@ -40,6 +43,7 @@ export class TailscaleTunnelProvider implements TunnelProvider {
       ? executablePath
       : () => executablePath ?? 'tailscale'
     this.execute = options.execute ?? executeFile
+    this.checkConnectivity = options.checkConnectivity ?? checkTailscaleConnectivity
     this.timeoutMs = options.timeoutMs ?? 10_000
   }
 
@@ -60,6 +64,10 @@ export class TailscaleTunnelProvider implements TunnelProvider {
 
     try {
       const parsed = parseTailscaleStatus(statusOutput)
+      if (!parsed.online) {
+        const connectivity = await this.checkConnectivity()
+        if (connectivity !== 'reachable') return { cliInstalled: true, ...parsed, errorCode: connectivity }
+      }
       const errorCode: TunnelErrorCode | null = !parsed.loggedIn ? 'not_logged_in' : !parsed.online ? 'offline' : null
       return { cliInstalled: true, ...parsed, errorCode }
     } catch {

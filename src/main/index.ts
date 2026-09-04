@@ -14,6 +14,8 @@ import { AppSettingsStore, type AppSettings } from './settings/AppSettingsStore'
 import { createTrayIcon, TrayController } from './tray/TrayController'
 import { resolveCorePort } from './core/CorePortResolver'
 import { TailscaleSetupService } from './tailscale/TailscaleSetupService'
+import { openTailscaleClient } from './tailscale/TailscaleClientLauncher'
+import { execFile } from 'node:child_process'
 import { ActivityStore } from './activity/ActivityStore'
 import { ToolCallStore } from './activity/ToolCallStore'
 import type { ActivityKind, ActivityState, ChatGPTStatus, CoreStatus, DesktopSnapshot, ProjectCandidate, ProjectMutationResult, ProjectSummary, TailscaleInstallStatus, TunnelStatus } from '../shared/contracts'
@@ -78,7 +80,8 @@ function snapshot(): DesktopSnapshot {
     toolCalls: toolCallStore.getSnapshot(),
     projects: projectSummaries(),
     appVersion: app.getVersion(),
-    settings: { ...appSettings }
+    settings: { ...appSettings },
+    tailscaleApplicationInstalled: findTailscaleApplication() !== null
   }
 }
 
@@ -198,8 +201,16 @@ function registerIpc(): void {
   ipcMain.handle(ipcChannels.installTailscale, (): Promise<TailscaleInstallStatus> => tailscaleSetup().install())
   ipcMain.handle(ipcChannels.openTailscaleApp, async (): Promise<boolean> => {
     const applicationPath = findTailscaleApplication()
-    if (!applicationPath) return false
-    return (await shell.openPath(applicationPath)) === ''
+    return openTailscaleClient({
+      platform: process.platform,
+      applicationPath,
+      executablePath: findTailscaleExecutable(),
+      phase: tunnelController.getStatus().phase,
+      openPath: (path) => shell.openPath(path),
+      runCommand: (executable, arguments_) => new Promise((resolve, reject) => {
+        execFile(executable, [...arguments_], (error) => error ? reject(error) : resolve())
+      })
+    })
   })
   ipcMain.handle(ipcChannels.selectProject, async (): Promise<ProjectCandidate | null> => {
     const options: OpenDialogOptions = {
@@ -243,6 +254,12 @@ function registerIpc(): void {
       }
     }
   )
+  ipcMain.handle(ipcChannels.openProject, async (_event, id: unknown): Promise<boolean> => {
+    if (typeof id !== 'string') return false
+    const project = projects().getSnapshot().projects.find((candidate) => candidate.id === id)
+    if (!project || !isAvailableDirectory(project.path)) return false
+    return (await shell.openPath(project.path)) === ''
+  })
   ipcMain.handle(ipcChannels.removeProject, async (_event, id: unknown): Promise<ProjectMutationResult> => {
     if (typeof id !== 'string') return { ok: false, errorCode: 'project_save_failed' }
     try {

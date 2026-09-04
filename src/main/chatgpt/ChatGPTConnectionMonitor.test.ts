@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChatGPTConnectionMonitor, parseCoreStructuredEvent } from './ChatGPTConnectionMonitor'
+
+afterEach(() => vi.useRealTimers())
 
 describe('ChatGPTConnectionMonitor', () => {
   it('accepts only structured Core events', () => {
@@ -27,6 +29,46 @@ describe('ChatGPTConnectionMonitor', () => {
     monitor.accept({ ts: 'now', level: 'info', event: 'oauth_authorization_state', authorizedClientCount: 1 })
 
     expect(monitor.getStatus()).toEqual({ phase: 'configured', lastConnectedAt: null })
+  })
+
+  it('lets an authorized client start a real reconnect attempt', () => {
+    const monitor = new ChatGPTConnectionMonitor()
+    monitor.setPrerequisites(true)
+    monitor.accept({ ts: 'now', level: 'info', event: 'oauth_authorization_state', authorizedClientCount: 1 })
+
+    monitor.beginSetup()
+    monitor.setPrerequisites(true)
+
+    expect(monitor.getStatus()).toEqual({ phase: 'waiting-request', lastConnectedAt: null })
+    monitor.dispose()
+  })
+
+  it('detects that ChatGPT reached the browser authorization flow', () => {
+    const monitor = new ChatGPTConnectionMonitor()
+    monitor.setPrerequisites(true)
+    monitor.accept({
+      ts: 'now',
+      level: 'info',
+      event: 'http_request',
+      path: '/',
+      status: 200,
+      referer: 'https://chatgpt.com/'
+    })
+
+    expect(monitor.getStatus().phase).toBe('waiting-authorization')
+    monitor.dispose()
+  })
+
+  it('reports a failed reconnect when no MCP session appears before the time limit', () => {
+    vi.useFakeTimers()
+    const monitor = new ChatGPTConnectionMonitor({ reconnectTimeoutMs: 90_000 })
+    monitor.setPrerequisites(true)
+    monitor.beginSetup()
+
+    vi.advanceTimersByTime(90_000)
+
+    expect(monitor.getStatus()).toEqual({ phase: 'stale', lastConnectedAt: null })
+    monitor.dispose()
   })
 
   it('returns to configured when the active MCP session closes', () => {

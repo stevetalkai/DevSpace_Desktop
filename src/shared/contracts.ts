@@ -1,4 +1,5 @@
 export type ServicePhase = 'stopped' | 'starting' | 'running' | 'stopping' | 'failed'
+export type DesktopPlatform = 'darwin' | 'win32' | 'linux'
 
 export interface CoreStatus {
   phase: ServicePhase
@@ -12,6 +13,7 @@ export type TunnelPhase =
   | 'checking'
   | 'cli-missing'
   | 'daemon-unavailable'
+  | 'coordination-unavailable'
   | 'not-logged-in'
   | 'offline'
   | 'ready'
@@ -85,6 +87,7 @@ export interface DesktopSnapshot {
   projects: ProjectSummary[]
   appVersion: string
   settings: AppSettingsSnapshot
+  tailscaleApplicationInstalled: boolean
 }
 
 export interface AppSettingsSnapshot {
@@ -140,6 +143,7 @@ export type ProjectMutationResult =
   | { ok: false; errorCode: 'candidate_expired' | 'high_risk_confirmation_required' | 'project_unavailable' | 'project_save_failed' }
 
 export interface DesktopApi {
+  platform: DesktopPlatform
   getSnapshot(): Promise<DesktopSnapshot>
   startCore(): Promise<CoreStatus>
   stopCore(): Promise<CoreStatus>
@@ -148,6 +152,7 @@ export interface DesktopApi {
   openChatGPTDeveloperMode(): Promise<void>
   selectProject(): Promise<ProjectCandidate | null>
   authorizeProject(token: string, confirmHighRisk: boolean): Promise<ProjectMutationResult>
+  openProject(id: string): Promise<boolean>
   removeProject(id: string): Promise<ProjectMutationResult>
   detectTunnel(): Promise<TunnelStatus>
   startTunnel(): Promise<TunnelStatus>
@@ -174,6 +179,7 @@ export const ipcChannels = {
   openChatGPTDeveloperMode: 'desktop:open-chatgpt-developer-mode',
   selectProject: 'projects:select',
   authorizeProject: 'projects:authorize',
+  openProject: 'projects:open',
   removeProject: 'projects:remove',
   detectTunnel: 'tunnel:detect',
   startTunnel: 'tunnel:start',

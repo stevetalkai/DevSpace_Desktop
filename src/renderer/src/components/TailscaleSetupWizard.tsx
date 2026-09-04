@@ -6,6 +6,7 @@ interface TailscaleSetupWizardProps {
   tunnel: TunnelStatus
   install: TailscaleInstallStatus
   detecting: boolean
+  applicationInstalled: boolean
   t: (key: string, ...values: Array<string | number>) => string
   onInstall: () => void
   onOpenApp: () => void
@@ -16,9 +17,7 @@ interface TailscaleSetupWizardProps {
 type CheckState = 'complete' | 'current' | 'pending'
 
 export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Element {
-  const installed = props.tunnel.phase !== 'cli-missing'
-  const running = installed && props.tunnel.phase !== 'daemon-unavailable'
-  const loggedIn = ['ready', 'starting', 'connected', 'stopping'].includes(props.tunnel.phase)
+  const { installed, running, loggedIn } = deriveTailscaleChecks(props.tunnel.phase)
   const progress = props.install.totalBytes
     ? Math.min(100, Math.round((props.install.downloadedBytes / props.install.totalBytes) * 100))
     : null
@@ -43,7 +42,7 @@ export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Elem
         <ol className="setup-checks" aria-label={props.t('app.tailscale.setup.environment_check')}>
           <SetupCheck
             state={installed ? 'complete' : 'current'}
-            label={props.t('app.tailscale.setup.check.application')}
+            label={props.t('app.tailscale.setup.check.client')}
             value={props.t(installed ? 'app.tailscale.setup.check.installed' : 'app.tailscale.setup.check.not_installed')}
           />
           <SetupCheck
@@ -59,7 +58,7 @@ export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Elem
         </ol>
 
         <div className="tailscale-setup__action">
-          {props.tunnel.phase === 'cli-missing' ? (
+          {!installed ? (
             <>
               <h3>{props.t('app.tailscale.setup.install_title')}</h3>
               <p>{props.t('app.tailscale.setup.install_description')}</p>
@@ -93,21 +92,42 @@ export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Elem
           ) : props.tunnel.phase === 'daemon-unavailable' ? (
             <>
               <h3>{props.t('app.tailscale.setup.open_title')}</h3>
-              <p>{props.t('app.tailscale.setup.open_description')}</p>
+              <p>{props.t(props.applicationInstalled
+                ? 'app.tailscale.setup.open_description'
+                : 'app.tailscale.setup.start_cli_description')}</p>
               <div className="tailscale-setup__buttons">
-                <button className="primary-button" onClick={props.onOpenApp}><ExternalLink size={16} /> {props.t('app.tailscale.setup.open_app')}</button>
+                <button className="primary-button" onClick={props.onOpenApp}><ExternalLink size={16} /> {props.t(props.applicationInstalled
+                  ? 'app.tailscale.setup.open_app'
+                  : 'app.tailscale.setup.start_cli')}</button>
                 <button className="secondary-button" disabled={props.detecting} onClick={props.onDetect}>
                   {props.detecting && <LoaderCircle className="spin" size={15} />}
                   {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.common.retry')}
                 </button>
               </div>
             </>
+          ) : props.tunnel.phase === 'coordination-unavailable' ? (
+            <>
+              <h3>{props.t('app.tailscale.setup.network_title')}</h3>
+              <div className="setup-notice setup-notice--error"><CircleAlert size={16} /> {props.t(
+                props.tunnel.errorCode === 'proxy_dns_conflict'
+                  ? 'app.tailscale.setup.proxy_dns_description'
+                  : 'app.tailscale.setup.network_description'
+              )}</div>
+              <button className="secondary-button" disabled={props.detecting} onClick={props.onDetect}>
+                {props.detecting && <LoaderCircle className="spin" size={15} />}
+                {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.common.retry')}
+              </button>
+            </>
           ) : props.tunnel.phase === 'not-logged-in' || props.tunnel.phase === 'offline' ? (
             <>
               <h3>{props.t('app.tailscale.setup.login_title')}</h3>
-              <p>{props.t('app.tailscale.setup.login_description')}</p>
+              <p>{props.t(props.applicationInstalled
+                ? 'app.tailscale.setup.login_description'
+                : 'app.tailscale.setup.login_cli_description')}</p>
               <div className="tailscale-setup__buttons">
-                <button className="primary-button" onClick={props.onOpenApp}><ExternalLink size={16} /> {props.t('app.tailscale.login')}</button>
+                <button className="primary-button" onClick={props.onOpenApp}><ExternalLink size={16} /> {props.t(props.applicationInstalled
+                  ? 'app.tailscale.login'
+                  : 'app.tailscale.setup.login_cli')}</button>
                 <button className="secondary-button" disabled={props.detecting} onClick={props.onDetect}>
                   {props.detecting && <LoaderCircle className="spin" size={15} />}
                   {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.tailscale.setup.login_check')}
@@ -133,6 +153,15 @@ export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Elem
       </section>
     </div>
   )
+}
+
+export function deriveTailscaleChecks(
+  phase: TunnelStatus['phase']
+): { installed: boolean; running: boolean; loggedIn: boolean } {
+  const loggedIn = ['ready', 'starting', 'connected', 'stopping'].includes(phase)
+  const installed = phase !== 'cli-missing' && phase !== 'checking'
+  const running = ['coordination-unavailable', 'not-logged-in', 'offline', 'ready', 'starting', 'connected', 'stopping'].includes(phase)
+  return { installed, running, loggedIn }
 }
 
 function SetupCheck({ state, label, value }: { state: CheckState; label: string; value: string }): JSX.Element {

@@ -21,13 +21,17 @@ export function OnboardingGuide(props: OnboardingGuideProps): JSX.Element {
   const tailscaleReady = ['ready', 'starting', 'connected', 'stopping'].includes(props.tunnel.phase)
   const preparationReady = props.coreRunning && tailscaleReady
   const connectionReady = props.tunnel.phase === 'connected'
-  const chatgptReady = ['configured', 'connected'].includes(props.chatgpt.phase)
-  const complete = preparationReady && connectionReady && chatgptReady
+  const chatgptConnected = props.chatgpt.phase === 'connected'
+  const complete = preparationReady && connectionReady && chatgptConnected
 
   const steps: Array<{ key: string; icon: typeof Check; state: StepState }> = [
     { key: 'preparation', icon: ShieldCheck, state: preparationReady ? 'complete' : 'current' },
     { key: 'connection', icon: Link2, state: connectionReady ? 'complete' : preparationReady ? 'current' : 'pending' },
-    { key: props.chatgpt.phase === 'configured' ? 'chatgpt_configured' : 'chatgpt', icon: Bot, state: chatgptReady ? 'complete' : connectionReady ? 'current' : 'pending' }
+    {
+      key: props.chatgpt.phase === 'configured' ? 'chatgpt_configured' : 'chatgpt',
+      icon: Bot,
+      state: chatgptConnected ? 'complete' : connectionReady ? 'current' : 'pending'
+    }
   ]
 
   const action = nextAction(props, { preparationReady, connectionReady })

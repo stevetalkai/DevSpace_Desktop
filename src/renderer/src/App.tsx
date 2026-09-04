@@ -44,6 +44,7 @@ const tunnelStatusKey: Record<TunnelPhase, string> = {
   checking: 'app.tailscale.status.checking',
   'cli-missing': 'app.tailscale.status.not_installed',
   'daemon-unavailable': 'app.tailscale.status.daemon_not_running',
+  'coordination-unavailable': 'app.tailscale.status.coordination_unavailable',
   'not-logged-in': 'app.tailscale.status.not_logged_in',
   offline: 'app.tailscale.status.offline',
   ready: 'app.tailscale.status.online_not_enabled',
@@ -57,6 +58,7 @@ const tunnelTone: Record<TunnelPhase, Tone> = {
   checking: 'working',
   'cli-missing': 'negative',
   'daemon-unavailable': 'negative',
+  'coordination-unavailable': 'negative',
   'not-logged-in': 'negative',
   offline: 'negative',
   ready: 'quiet',
@@ -79,7 +81,7 @@ const chatgptTone: Record<ChatGPTPhase, Tone> = {
   'not-connected': 'quiet',
   'waiting-request': 'working',
   'waiting-authorization': 'working',
-  configured: 'positive',
+  configured: 'quiet',
   connected: 'positive',
   stale: 'negative'
 }
@@ -107,7 +109,7 @@ export function App(): JSX.Element {
   const t = useMemo(() => (key: string, ...values: Array<string | number>) => translate(key, locale, ...values), [locale])
   const coreRunning = snapshot.core.phase === 'running'
   const chatgptReady = coreRunning && snapshot.tunnel.phase === 'connected' && Boolean(snapshot.tunnel.mcpUrl)
-  const fullyReady = chatgptReady && ['configured', 'connected'].includes(snapshot.chatgpt.phase)
+  const fullyReady = chatgptReady && snapshot.chatgpt.phase === 'connected'
   const activityWorking = snapshot.activities.some((item) => item.state === 'working')
   const toolCallsWorking = snapshot.toolCalls.some((item) => item.state === 'working')
 
@@ -122,7 +124,7 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     if (!tailscaleSetupOpen) return undefined
-    const shouldPoll = tailscaleInstall.phase === 'installer-opened' || ['daemon-unavailable', 'not-logged-in', 'offline'].includes(snapshot.tunnel.phase)
+    const shouldPoll = tailscaleInstall.phase === 'installer-opened' || ['daemon-unavailable', 'coordination-unavailable', 'not-logged-in', 'offline'].includes(snapshot.tunnel.phase)
     if (!shouldPoll) return undefined
     const timer = window.setInterval(() => { void window.devspace.detectTunnel() }, 2_500)
     return () => window.clearInterval(timer)
@@ -176,6 +178,11 @@ export function App(): JSX.Element {
     }
   }
 
+  const openProject = async (id: string): Promise<void> => {
+    setProjectError(null)
+    if (!(await window.devspace.openProject(id))) setProjectError('app.project.read_failed')
+  }
+
   const runTunnel = async (operation: () => Promise<unknown>): Promise<void> => {
     setTunnelPending(true)
     setAddressCopied(false)
@@ -195,16 +202,7 @@ export function App(): JSX.Element {
 
   const openChatGPTWizard = async (): Promise<void> => {
     if (!chatgptReady) return
-    await window.devspace.beginChatGPTSetup()
     setChatgptWizardOpen(true)
-  }
-
-  const openChatGPTOrSetup = async (): Promise<void> => {
-    if (snapshot.chatgpt.phase === 'configured' || snapshot.chatgpt.phase === 'connected') {
-      await window.devspace.openChatGPT()
-      return
-    }
-    await openChatGPTWizard()
   }
 
   const installTailscale = async (): Promise<void> => {
@@ -269,7 +267,7 @@ export function App(): JSX.Element {
                 <CheckCircle2 size={18} />
                 <div>
                   <strong>{t('app.ready.title')}</strong>
-                  <span>{t(snapshot.chatgpt.phase === 'connected' ? 'app.ready.connected_description' : 'app.ready.configured_description')}</span>
+                  <span>{t('app.ready.connected_description')}</span>
                 </div>
               </div>
             )}
@@ -357,9 +355,15 @@ export function App(): JSX.Element {
           ) : (
             <ProjectList
               projects={snapshot.projects}
+              openLabel={t(window.devspace.platform === 'darwin'
+                ? 'app.project.open_in_finder'
+                : window.devspace.platform === 'win32'
+                  ? 'app.project.open_in_explorer'
+                  : 'app.project.open_in_file_manager')}
               removeLabel={t('app.project.remove')}
               unavailableLabel={t('app.project.unavailable')}
               disabled={projectBusy}
+              onOpen={(id) => void openProject(id)}
               onRemove={(id) => void removeProject(id)}
             />
           )}
@@ -371,8 +375,8 @@ export function App(): JSX.Element {
             {t('app.advanced.title')}
           </button>
           <div className="version">v{snapshot.appVersion} · {t('app.footer.local_first')}</div>
-          <button className="primary-button" disabled={!chatgptReady} onClick={() => void openChatGPTOrSetup()}>
-            {t('app.chatgpt.open')}
+          <button className="primary-button" disabled={!chatgptReady} onClick={() => void openChatGPTWizard()}>
+            {t('app.chatgpt.manage')}
             <ChevronRight size={18} />
           </button>
           </footer>
@@ -420,6 +424,7 @@ export function App(): JSX.Element {
           tunnel={snapshot.tunnel}
           install={tailscaleInstall}
           detecting={tailscaleDetecting}
+          applicationInstalled={snapshot.tailscaleApplicationInstalled}
           t={t}
           onInstall={() => void installTailscale()}
           onOpenApp={() => void openTailscaleApp()}

@@ -17,6 +17,8 @@ const funnelStatus = JSON.stringify({
   AllowFunnel: { 'desktop.tailnet.ts.net:443': true }
 })
 
+const reachable = async (): Promise<'reachable'> => 'reachable'
+
 function success(stdout = ''): CommandResult {
   return { stdout, stderr: '' }
 }
@@ -88,6 +90,7 @@ describe('TailscaleTunnelProvider.detect', () => {
 
   it('reports logged-out and offline states separately', async () => {
     const loggedOut = new TailscaleTunnelProvider({
+      checkConnectivity: reachable,
       execute: vi
         .fn<CommandExecutor>()
         .mockResolvedValueOnce(success('version'))
@@ -96,6 +99,7 @@ describe('TailscaleTunnelProvider.detect', () => {
     await expect(loggedOut.detect()).resolves.toMatchObject({ errorCode: 'not_logged_in', loggedIn: false })
 
     const offline = new TailscaleTunnelProvider({
+      checkConnectivity: reachable,
       execute: vi
         .fn<CommandExecutor>()
         .mockResolvedValueOnce(success('version'))
@@ -104,6 +108,20 @@ describe('TailscaleTunnelProvider.detect', () => {
         )
     })
     await expect(offline.detect()).resolves.toMatchObject({ errorCode: 'offline', loggedIn: true, online: false })
+  })
+
+  it.each([
+    ['proxy_dns_conflict', 'proxy_dns_conflict'],
+    ['coordination_unavailable', 'coordination_unavailable']
+  ] as const)('reports %s before asking the user to sign in', async (_name, result) => {
+    const provider = new TailscaleTunnelProvider({
+      checkConnectivity: async () => result,
+      execute: vi
+        .fn<CommandExecutor>()
+        .mockResolvedValueOnce(success('version'))
+        .mockResolvedValueOnce(success(JSON.stringify({ BackendState: 'NeedsLogin' })))
+    })
+    await expect(provider.detect()).resolves.toMatchObject({ errorCode: result, daemonAvailable: true })
   })
 
   it('returns invalid_output for malformed status JSON', async () => {

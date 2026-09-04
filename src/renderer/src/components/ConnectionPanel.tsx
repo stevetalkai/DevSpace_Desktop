@@ -37,7 +37,7 @@ export function ConnectionPanel(props: ConnectionPanelProps): JSX.Element {
       </div>
       <div className="connection-panel__actions">
         {connected && (
-          <button className="secondary-button" disabled={busy} onClick={props.onCopy}>
+          <button className="secondary-button secondary-button--primary" disabled={busy} onClick={props.onCopy}>
             {props.copied ? <Check size={16} /> : <Copy size={16} />}
             {props.copied ? props.t('app.common.done') : props.t('app.tailscale.copy_address')}
           </button>

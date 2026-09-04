@@ -1,8 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DesktopApi, DesktopSnapshot, TailscaleInstallStatus } from '../shared/contracts'
+import type { DesktopApi, DesktopPlatform, DesktopSnapshot, TailscaleInstallStatus } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 
+const platform: DesktopPlatform = process.platform === 'darwin' || process.platform === 'win32' ? process.platform : 'linux'
+
 const api: DesktopApi = {
+  platform,
   getSnapshot: () => ipcRenderer.invoke(ipcChannels.getSnapshot),
   startCore: () => ipcRenderer.invoke(ipcChannels.startCore),
   stopCore: () => ipcRenderer.invoke(ipcChannels.stopCore),
@@ -10,6 +13,7 @@ const api: DesktopApi = {
   openChatGPTDeveloperMode: () => ipcRenderer.invoke(ipcChannels.openChatGPTDeveloperMode),
   selectProject: () => ipcRenderer.invoke(ipcChannels.selectProject),
   authorizeProject: (token, confirmHighRisk) => ipcRenderer.invoke(ipcChannels.authorizeProject, token, confirmHighRisk),
+  openProject: (id) => ipcRenderer.invoke(ipcChannels.openProject, id),
   removeProject: (id) => ipcRenderer.invoke(ipcChannels.removeProject, id),
   detectTunnel: () => ipcRenderer.invoke(ipcChannels.detectTunnel),
   startTunnel: () => ipcRenderer.invoke(ipcChannels.startTunnel),

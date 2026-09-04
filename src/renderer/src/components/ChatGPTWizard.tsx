@@ -28,6 +28,12 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
   const [passwordCopied, setPasswordCopied] = useState(false)
   const [developerModeSettingsOpened, setDeveloperModeSettingsOpened] = useState(false)
   const [chatgptOpened, setChatgptOpened] = useState(false)
+  const requestReachedDevSpace = ['waiting-authorization', 'configured', 'connected', 'stale'].includes(status.phase)
+  const connected = status.phase === 'connected'
+  const authorized = connected || status.phase === 'configured'
+  const connectionInterrupted = status.phase === 'stale' || (status.phase === 'not-connected' && status.lastConnectedAt !== null)
+  const reconnecting = status.phase === 'configured' || connectionInterrupted
+  const canContinue = status.phase === 'waiting-request' || status.phase === 'configured' || connectionInterrupted
 
   const copyAddress = async (): Promise<void> => {
     if (await window.devspace.copyMcpUrl()) setAddressCopied(true)
@@ -48,6 +54,7 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
   }
 
   const continueSetup = async (): Promise<void> => {
+    if (reconnecting) await copyPassword()
     await window.devspace.beginChatGPTSetup()
     await openChatGPT()
   }
@@ -60,15 +67,11 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
     void continueSetup()
   }
 
-  const requestReachedDevSpace = ['waiting-authorization', 'configured', 'connected', 'stale'].includes(status.phase)
-  const connected = status.phase === 'connected'
-  const authorized = connected || status.phase === 'configured'
-  const reconnecting = status.phase === 'stale' || (status.phase === 'not-connected' && status.lastConnectedAt !== null)
-  const canContinue = status.phase === 'waiting-request' || status.phase === 'configured' || reconnecting
-
   return (
     <div className="dialog-backdrop" role="presentation">
       <section className="chatgpt-wizard" role="dialog" aria-modal="true" aria-labelledby="chatgpt-wizard-title">
+        <button className="icon-button chatgpt-wizard__close" onClick={onClose} aria-label={t('app.common.cancel')}><X size={18} /></button>
+        <div className="chatgpt-wizard__scroll">
         <div className="chatgpt-wizard__header">
           <div className="chatgpt-wizard__identity">
             <span><Bot size={20} /></span>
@@ -77,17 +80,36 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
               <h2 id="chatgpt-wizard-title">{t('app.chatgpt.wizard.title')}</h2>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label={t('app.common.cancel')}><X size={18} /></button>
         </div>
 
         <div className={`wizard-live-state wizard-live-state--${status.phase}`}>
           <i /> {t(statusKeys[status.phase])}
         </div>
 
-        {reconnecting && (
+        {status.lastConnectedAt && (
+          <p className="wizard-last-connected">
+            {t('app.chatgpt.wizard.last_connected_at', new Date(status.lastConnectedAt).toLocaleString())}
+          </p>
+        )}
+
+        {connectionInterrupted && (
           <div className="wizard-recovery" role="alert">
             <AlertCircle size={17} />
             <div><strong>{t('app.chatgpt.wizard.connection_interrupted_title')}</strong><p>{t('app.chatgpt.wizard.connection_interrupted_description')}</p></div>
+          </div>
+        )}
+
+        {status.phase === 'waiting-authorization' && (
+          <div className="wizard-authorization-request" role="status">
+            <KeyRound size={17} />
+            <div>
+              <strong>{t('app.chatgpt.wizard.authorization_requested_title')}</strong>
+              <p>{t('app.chatgpt.wizard.authorization_requested_description')}</p>
+              <button className="wizard-action wizard-action--primary" onClick={() => void copyPassword()}>
+                {passwordCopied ? <Check size={15} /> : <Copy size={15} />}
+                {t(passwordCopied ? 'app.chatgpt.wizard.password_copied' : 'app.chatgpt.wizard.copy_owner_password')}
+              </button>
+            </div>
           </div>
         )}
 
@@ -185,7 +207,7 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
                 <img src={authorizeDevSpaceGuide} alt={t('app.chatgpt.wizard.authorize_image_alt')} />
                 <figcaption>{t('app.chatgpt.wizard.authorize_image_caption')}</figcaption>
               </figure>
-              <button className="wizard-action" onClick={() => void copyPassword()}>
+              <button className="wizard-action wizard-action--primary" onClick={() => void copyPassword()}>
                 {passwordCopied ? <Check size={15} /> : <KeyRound size={15} />}
                 {t(passwordCopied ? 'app.chatgpt.wizard.password_copied' : 'app.chatgpt.wizard.copy_owner_password')}
               </button>
@@ -218,6 +240,7 @@ export function ChatGPTWizard({ mcpUrl, status, t, onClose }: ChatGPTWizardProps
                   ? 'app.chatgpt.wizard.finish_authorization'
                   : 'app.chatgpt.wizard.waiting_complete')}
         </button>
+        </div>
       </section>
     </div>
   )

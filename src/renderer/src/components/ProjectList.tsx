@@ -1,15 +1,17 @@
-import { Folder, Trash2 } from 'lucide-react'
+import { Folder, FolderOpen, Trash2 } from 'lucide-react'
 import type { JSX } from 'react'
 import type { ProjectSummary } from '../../../shared/contracts'
 
 interface ProjectListProps {
   projects: ProjectSummary[]
+  openLabel: string
   removeLabel: string
   unavailableLabel: string
+  onOpen: (id: string) => void
   onRemove: (id: string) => void
   disabled: boolean
 }
-export function ProjectList({ projects, removeLabel, unavailableLabel, onRemove, disabled }: ProjectListProps): JSX.Element {
+export function ProjectList({ projects, openLabel, removeLabel, unavailableLabel, onOpen, onRemove, disabled }: ProjectListProps): JSX.Element {
   return (
     <div className="project-list">
       {projects.map((project) => (
@@ -22,15 +24,25 @@ export function ProjectList({ projects, removeLabel, unavailableLabel, onRemove,
             </div>
             <p title={project.path}>{project.path}</p>
           </div>
-          <button
-            className="icon-button"
-            aria-label={`${removeLabel}: ${project.name}`}
-            title={removeLabel}
-            disabled={disabled}
-            onClick={() => onRemove(project.id)}
-          >
-            <Trash2 size={17} />
-          </button>
+          <div className="project-row__actions">
+            <button
+              className="secondary-button project-row__open"
+              disabled={disabled || !project.available}
+              onClick={() => onOpen(project.id)}
+            >
+              <FolderOpen size={16} />
+              {openLabel}
+            </button>
+            <button
+              className="icon-button"
+              aria-label={`${removeLabel}: ${project.name}`}
+              title={removeLabel}
+              disabled={disabled}
+              onClick={() => onRemove(project.id)}
+            >
+              <Trash2 size={17} />
+            </button>
+          </div>
         </article>
       ))}
     </div>
