@@ -303,6 +303,7 @@ export function App(): JSX.Element {
             status={t(coreStatusKey[snapshot.core.phase])}
             tone={coreTone[snapshot.core.phase]}
           />
+          <span className={`status-grid__link ${coreRunning ? 'status-grid__link--active' : ''}`} aria-hidden="true"><i /><i /><i /></span>
           <StatusCard
             icon={Link2}
             title={t('app.status.tailscale.title')}
@@ -310,6 +311,7 @@ export function App(): JSX.Element {
             status={t(tunnelStatusKey[snapshot.tunnel.phase])}
             tone={tunnelTone[snapshot.tunnel.phase]}
           />
+          <span className={`status-grid__link ${snapshot.tunnel.phase === 'connected' ? 'status-grid__link--active' : ''}`} aria-hidden="true"><i /><i /><i /></span>
           <StatusCard
             icon={Bot}
             title={t('app.status.chatgpt.title')}

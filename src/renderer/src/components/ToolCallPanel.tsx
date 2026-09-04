@@ -70,9 +70,9 @@ export function ToolCallPanel({ items, locale, t, onExportReport }: ToolCallPane
                       <span className="tool-call-item__main">
                         <span className="tool-call-item__title">{t('app.tool_calls.item', item.sequence)} <code>{item.tool}</code></span>
                         <span className="tool-call-badges">
-                          {readTools.has(item.tool) && <small>{t('app.tool_calls.badge.read')}</small>}
-                          {commandTools.has(item.tool) && <small>{t('app.tool_calls.badge.command')}</small>}
-                          {writeTools.has(item.tool) && <small>{t('app.tool_calls.badge.modify')}</small>}
+                          {readTools.has(item.tool) && <small className="badge-read">{t('app.tool_calls.badge.read')}</small>}
+                          {commandTools.has(item.tool) && <small className="badge-command">{t('app.tool_calls.badge.command')}</small>}
+                          {writeTools.has(item.tool) && <small className="badge-modify">{t('app.tool_calls.badge.modify')}</small>}
                         </span>
                       </span>
                       <span className="tool-call-item__result">
