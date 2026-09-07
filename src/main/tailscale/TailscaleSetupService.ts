@@ -53,7 +53,7 @@ export class TailscaleSetupService extends EventEmitter {
 
   private async runInstall(): Promise<TailscaleInstallStatus> {
     const platform = this.options.platform
-    if (!isSupportedPlatform(platform)) {
+    if (!isSupportedPlatform(platform) || platform === 'darwin') {
       return this.update({ phase: 'unsupported', downloadedBytes: 0, totalBytes: null, errorCode: 'unsupported_platform' })
     }
 

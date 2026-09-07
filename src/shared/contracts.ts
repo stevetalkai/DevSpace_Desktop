@@ -88,6 +88,9 @@ export interface DesktopSnapshot {
   appVersion: string
   settings: AppSettingsSnapshot
   tailscaleApplicationInstalled: boolean
+  platform: string
+  homebrewPath: string | null
+  tailscaleCliInstalled: boolean
 }
 
 export interface AppSettingsSnapshot {
@@ -167,6 +170,8 @@ export interface DesktopApi {
   openLogsFolder(): Promise<void>
   installTailscale(): Promise<TailscaleInstallStatus>
   openTailscaleApp(): Promise<boolean>
+  clearHistory(target: 'activity' | 'tools'): Promise<boolean>
+  runTailscaleCommand(action: 'install' | 'service' | 'login', source: 'official' | 'ustc'): Promise<boolean>
   subscribeTailscaleInstall(listener: (status: TailscaleInstallStatus) => void): () => void
 }
 
@@ -194,5 +199,7 @@ export const ipcChannels = {
   openLogsFolder: 'diagnostics:open-folder',
   installTailscale: 'tailscale:install',
   openTailscaleApp: 'tailscale:open-app',
+  clearHistory: 'history:clear',
+  runTailscaleCommand: 'tailscale:run-command',
   tailscaleInstallChanged: 'tailscale:install-changed'
 } as const

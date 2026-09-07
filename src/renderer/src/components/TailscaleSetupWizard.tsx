@@ -1,12 +1,17 @@
-import { Check, CircleAlert, Download, ExternalLink, LoaderCircle, ShieldCheck, X } from 'lucide-react'
-import type { JSX } from 'react'
+import { Check, CircleAlert, LoaderCircle, ShieldCheck, X } from 'lucide-react'
+import { useEffect, useRef, type JSX } from 'react'
 import type { TailscaleInstallStatus, TunnelStatus } from '../../../shared/contracts'
+import { TailscaleInstallGuide } from './TailscaleInstallGuide'
+import { TailscaleCommandButton } from './TailscaleCommandButton'
 
 interface TailscaleSetupWizardProps {
   tunnel: TunnelStatus
   install: TailscaleInstallStatus
   detecting: boolean
   applicationInstalled: boolean
+  platform: string
+  homebrewPath: string | null
+  cliInstalled: boolean
   t: (key: string, ...values: Array<string | number>) => string
   onInstall: () => void
   onOpenApp: () => void
@@ -17,11 +22,18 @@ interface TailscaleSetupWizardProps {
 type CheckState = 'complete' | 'current' | 'pending'
 
 export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Element {
-  const { installed, running, loggedIn } = deriveTailscaleChecks(props.tunnel.phase)
-  const progress = props.install.totalBytes
-    ? Math.min(100, Math.round((props.install.downloadedBytes / props.install.totalBytes) * 100))
-    : null
-  const installBusy = props.install.phase === 'downloading' || props.install.phase === 'opening-installer'
+  const detection = useRef({ run: props.onDetect, busy: props.detecting })
+  useEffect(() => {
+    detection.current = { run: props.onDetect, busy: props.detecting }
+  }, [props.onDetect, props.detecting])
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!detection.current.busy) detection.current.run()
+    }, 5_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const { running, loggedIn } = deriveTailscaleChecks(props.tunnel.phase)
+  const installed = props.cliInstalled
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -60,45 +72,20 @@ export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Elem
         <div className="tailscale-setup__action">
           {!installed ? (
             <>
-              <h3>{props.t('app.tailscale.setup.install_title')}</h3>
-              <p>{props.t('app.tailscale.setup.install_description')}</p>
-              {props.install.phase === 'downloading' && (
-                <div className="download-progress" aria-live="polite">
-                  <div><span style={{ width: `${progress ?? 12}%` }} /></div>
-                  <p>{progress === null
-                    ? props.t('app.tailscale.setup.downloading')
-                    : props.t('app.tailscale.setup.downloading_percent', progress)}</p>
-                </div>
-              )}
-              {props.install.phase === 'installer-opened' && (
-                <div className="setup-notice setup-notice--success"><Check size={16} /> {props.t('app.tailscale.setup.installer_opened')}</div>
-              )}
-              {props.install.phase === 'failed' && (
-                <div className="setup-notice setup-notice--error"><CircleAlert size={16} /> {props.t(`app.tailscale.setup.error.${props.install.errorCode}`)}</div>
-              )}
-              <div className="tailscale-setup__buttons">
-                <button className="primary-button" disabled={installBusy} onClick={props.onInstall}>
-                  {installBusy ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}
-                  {props.t(installBusy ? 'app.tailscale.setup.installing' : 'app.tailscale.setup.download_and_install')}
-                </button>
-                {props.install.phase === 'installer-opened' && (
-                  <button className="secondary-button" disabled={props.detecting} onClick={props.onDetect}>
-                    {props.detecting && <LoaderCircle className="spin" size={15} />}
-                    {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.tailscale.setup.installed_check')}
-                  </button>
-                )}
-              </div>
+              <h3>{props.t('app.tailscale.cli.instructions')}</h3>
+              <TailscaleInstallGuide platform={props.platform} homebrewPath={props.homebrewPath} t={props.t} />
+              <button className="primary-button" disabled={props.detecting} onClick={props.onDetect}>
+                {props.detecting && <LoaderCircle className="spin" size={15} />}
+                {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.tailscale.cli.detect')}
+              </button>
             </>
-          ) : props.tunnel.phase === 'daemon-unavailable' ? (
+          ) : props.tunnel.phase === 'daemon-unavailable' || props.tunnel.errorCode === 'timeout' ? (
             <>
               <h3>{props.t('app.tailscale.setup.open_title')}</h3>
-              <p>{props.t(props.applicationInstalled
-                ? 'app.tailscale.setup.open_description'
-                : 'app.tailscale.setup.start_cli_description')}</p>
+              <p>{props.t('app.tailscale.cli.service')}</p>
+              <pre>{props.platform === 'win32' ? 'Start-Service -Name Tailscale' : 'sudo brew services start tailscale'}</pre>
+              <TailscaleCommandButton action="service" t={props.t} />
               <div className="tailscale-setup__buttons">
-                <button className="primary-button" onClick={props.onOpenApp}><ExternalLink size={16} /> {props.t(props.applicationInstalled
-                  ? 'app.tailscale.setup.open_app'
-                  : 'app.tailscale.setup.start_cli')}</button>
                 <button className="secondary-button" disabled={props.detecting} onClick={props.onDetect}>
                   {props.detecting && <LoaderCircle className="spin" size={15} />}
                   {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.common.retry')}
@@ -121,13 +108,11 @@ export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Elem
           ) : props.tunnel.phase === 'not-logged-in' || props.tunnel.phase === 'offline' ? (
             <>
               <h3>{props.t('app.tailscale.setup.login_title')}</h3>
-              <p>{props.t(props.applicationInstalled
-                ? 'app.tailscale.setup.login_description'
-                : 'app.tailscale.setup.login_cli_description')}</p>
+              <p>{props.t('app.tailscale.cli.after_install')}</p>
+              <pre>tailscale login</pre>
+              <p>{props.t('app.tailscale.setup.account_hint')}</p>
+              <TailscaleCommandButton action="login" t={props.t} />
               <div className="tailscale-setup__buttons">
-                <button className="primary-button" onClick={props.onOpenApp}><ExternalLink size={16} /> {props.t(props.applicationInstalled
-                  ? 'app.tailscale.login'
-                  : 'app.tailscale.setup.login_cli')}</button>
                 <button className="secondary-button" disabled={props.detecting} onClick={props.onDetect}>
                   {props.detecting && <LoaderCircle className="spin" size={15} />}
                   {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.tailscale.setup.login_check')}

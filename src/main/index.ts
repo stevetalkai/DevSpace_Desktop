@@ -14,10 +14,15 @@ import { AppSettingsStore, type AppSettings } from './settings/AppSettingsStore'
 import { createTrayIcon, TrayController } from './tray/TrayController'
 import { resolveCorePort } from './core/CorePortResolver'
 import { TailscaleSetupService } from './tailscale/TailscaleSetupService'
+import { findTailscaleExecutable } from './tailscale/TailscaleExecutable'
+import { findHomebrew } from './tailscale/HomebrewDetection'
+import { runTailscaleCommand } from './tailscale/TailscaleTerminalCommand'
+import { TailscaleLogin } from './tailscale/TailscaleLogin'
 import { openTailscaleClient } from './tailscale/TailscaleClientLauncher'
 import { execFile } from 'node:child_process'
 import { ActivityStore } from './activity/ActivityStore'
 import { ToolCallStore } from './activity/ToolCallStore'
+import { openExternalUrl } from './external/ExternalUrlLauncher'
 import type { ActivityKind, ActivityState, ChatGPTStatus, CoreStatus, DesktopSnapshot, ProjectCandidate, ProjectMutationResult, ProjectSummary, TailscaleInstallStatus, TunnelStatus } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 
@@ -42,6 +47,7 @@ const tunnelController = new TunnelController(
   async (publicUrl) => { await service().replacePublicBaseUrl(publicUrl) }
 )
 const pendingProjects = new Map<string, { path: string; highRisk: boolean; expiresAt: number }>()
+const tailscaleLogin = new TailscaleLogin((url) => shell.openExternal(url))
 
 function service(): CoreService {
   if (!coreService) throw new Error('Core service is not initialized')
@@ -81,7 +87,10 @@ function snapshot(): DesktopSnapshot {
     projects: projectSummaries(),
     appVersion: app.getVersion(),
     settings: { ...appSettings },
-    tailscaleApplicationInstalled: findTailscaleApplication() !== null
+    tailscaleApplicationInstalled: findTailscaleApplication() !== null,
+    platform: process.platform,
+    homebrewPath: findHomebrew(),
+    tailscaleCliInstalled: isTailscaleCliInstalled()
   }
 }
 
@@ -89,6 +98,22 @@ function broadcastSnapshot(): void {
   chatgptMonitor.setPrerequisites(service().getStatus().phase === 'running' && tunnelController.getStatus().phase === 'connected')
   trayController?.refresh()
   mainWindow?.webContents.send(ipcChannels.snapshotChanged, snapshot())
+}
+
+function isTailscaleCliInstalled(): boolean {
+  try { findTailscaleExecutable(); return true } catch { return false }
+}
+
+function openLoggedExternalUrl(url: string): Promise<void> {
+  return openExternalUrl(url, {
+    openExternal: (target) => shell.openExternal(target),
+    recordFailure: async (target, reason) => {
+      await diagnosticLog?.append('error', 'external-url', 'Failed to open external URL', {
+        url: target,
+        reason
+      })
+    }
+  })
 }
 
 function createWindow(): void {
@@ -126,14 +151,26 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
+  ipcMain.handle(ipcChannels.clearHistory, async (_event, target: unknown): Promise<boolean> => {
+    try {
+      if (target === 'activity') activityStore.clearHistory()
+      else if (target === 'tools') {
+        const ids = new Set(toolCallStore.getSnapshot().filter((item) => item.state !== 'working').map((item) => item.id))
+        await diagnosticLog?.clearToolHistory()
+        toolCallStore.clearHistory(ids)
+      } else return false
+      broadcastSnapshot()
+      return true
+    } catch { return false }
+  })
   ipcMain.handle(ipcChannels.getSnapshot, () => snapshot())
   ipcMain.handle(ipcChannels.startCore, async () => service().start())
   ipcMain.handle(ipcChannels.stopCore, async () => service().stop())
   ipcMain.handle(ipcChannels.openChatGPT, async () => {
-    await shell.openExternal('https://chatgpt.com/plugins')
+    await openLoggedExternalUrl('https://chatgpt.com/plugins')
   })
   ipcMain.handle(ipcChannels.openChatGPTDeveloperMode, async () => {
-    await shell.openExternal('https://chatgpt.com/plugins#settings/Security?section=developer-mode')
+    await openLoggedExternalUrl('https://chatgpt.com/plugins#settings/Security?section=developer-mode')
   })
   ipcMain.handle(ipcChannels.detectTunnel, () => tunnelController.detect())
   ipcMain.handle(ipcChannels.startTunnel, () => resumeConnection())
@@ -199,6 +236,13 @@ function registerIpc(): void {
     await shell.openPath(logsDirectory)
   })
   ipcMain.handle(ipcChannels.installTailscale, (): Promise<TailscaleInstallStatus> => tailscaleSetup().install())
+  ipcMain.handle(ipcChannels.runTailscaleCommand, async (_event, action: unknown, source: unknown): Promise<boolean> => {
+    try {
+      if (action === 'login') await tailscaleLogin.login(findTailscaleExecutable())
+      else await runTailscaleCommand(action, source)
+      return true
+    } catch { return false }
+  })
   ipcMain.handle(ipcChannels.openTailscaleApp, async (): Promise<boolean> => {
     const applicationPath = findTailscaleApplication()
     return openTailscaleClient({
@@ -271,17 +315,6 @@ function registerIpc(): void {
       return { ok: false, errorCode: 'project_save_failed' }
     }
   })
-}
-
-function findTailscaleExecutable(): string {
-  const candidates = process.platform === 'win32'
-    ? ['C:\\Program Files\\Tailscale\\tailscale.exe']
-    : [
-        '/usr/local/bin/tailscale',
-        '/opt/homebrew/bin/tailscale',
-        '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
-      ]
-  return candidates.find(existsSync) ?? 'tailscale'
 }
 
 function addActivity(kind: ActivityKind, state: ActivityState, detail?: string): void {
@@ -462,7 +495,7 @@ app.whenReady().then(async () => {
       snapshot,
       {
         showWindow: showMainWindow,
-        openChatGPT: () => shell.openExternal('https://chatgpt.com/plugins'),
+        openChatGPT: () => openLoggedExternalUrl('https://chatgpt.com/plugins'),
         pauseConnection,
         resumeConnection,
         quit: () => app.quit()
@@ -494,6 +527,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', (event) => {
+  tailscaleLogin.stop()
   isQuitting = true
   if (!coreService || coreService.getStatus().phase === 'stopped') return
   event.preventDefault()

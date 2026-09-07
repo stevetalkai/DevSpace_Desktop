@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { openTailscaleClient, terminalCommand } from './TailscaleClientLauncher'
 
 describe('TailscaleClientLauncher', () => {
-  it('opens the desktop app when it is installed', async () => {
+  it('does not open a macOS desktop app as a command-line client', async () => {
     const openPath = vi.fn(async () => '')
     const runCommand = vi.fn(async () => undefined)
 
@@ -13,8 +13,8 @@ describe('TailscaleClientLauncher', () => {
       phase: 'daemon-unavailable',
       openPath,
       runCommand
-    })).resolves.toBe(true)
-    expect(openPath).toHaveBeenCalledWith('/Applications/Tailscale.app')
+    })).resolves.toBe(false)
+    expect(openPath).not.toHaveBeenCalled()
     expect(runCommand).not.toHaveBeenCalled()
   })
 

@@ -52,6 +52,12 @@ export class ToolCallStore {
     return this.items.map((item) => ({ ...item, files: item.files ? [...item.files] : undefined }))
   }
 
+  clearHistory(ids = new Set(this.items.filter((item) => item.state !== 'working').map((item) => item.id))): void {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      if (ids.has(this.items[i]!.id) && this.items[i]?.state !== 'working') this.items.splice(i, 1)
+    }
+  }
+
   private trim(): void {
     if (this.items.length > this.limit) this.items.splice(0, this.items.length - this.limit)
   }

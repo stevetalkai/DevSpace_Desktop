@@ -17,6 +17,22 @@ afterEach(async () => {
 })
 
 describe('DiagnosticLogStore', () => {
+  it('clears persisted tool history and preserves other logs and subsequent calls', async () => {
+    const logsDirectory = await makeTemporaryDirectory()
+    const store = new DiagnosticLogStore({ logsDirectory, maxFileBytes: 250 })
+    await store.append('info', 'core', 'service_started')
+    await store.append('info', 'core', 'tool_call', { tool: 'read' })
+    const queued = store.append('info', 'core', 'tool_call', { tool: 'old' })
+    const clearing = store.clearToolHistory()
+    const subsequent = store.append('info', 'core', 'tool_call', { tool: 'new' })
+    await Promise.all([queued, clearing, subsequent])
+    const restored = new DiagnosticLogStore({ logsDirectory })
+    const events = await restored.getReportEvents()
+    expect(events.map(event => event.message)).toEqual(['service_started', 'tool_call'])
+    expect(events[1]?.details).toEqual({ tool: 'new' })
+    expect(store.getRecent().map(event => event.message)).toEqual(['service_started', 'tool_call'])
+  })
+
   it('keeps only the 500 most recent structured events in memory', async () => {
     const store = new DiagnosticLogStore({ now: () => new Date('2026-09-02T01:02:03.000Z') })
 

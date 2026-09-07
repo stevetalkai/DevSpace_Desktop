@@ -19,6 +19,7 @@ export class TunnelController extends EventEmitter {
   }
 
   async detect(): Promise<TunnelStatus> {
+    this.emit('status', this.getStatus())
     const environment = await this.provider.detect()
     if (environment.errorCode) {
       await this.onPublicUrlChanged(null)

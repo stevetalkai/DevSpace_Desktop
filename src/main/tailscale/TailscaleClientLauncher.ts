@@ -12,7 +12,7 @@ export interface TailscaleClientLauncherOptions {
 }
 
 export async function openTailscaleClient(options: TailscaleClientLauncherOptions): Promise<boolean> {
-  if (options.applicationPath) return (await options.openPath(options.applicationPath)) === ''
+  if (options.platform !== 'darwin' && options.applicationPath) return (await options.openPath(options.applicationPath)) === ''
   if (options.platform !== 'darwin') return false
 
   const command = terminalCommand(options.executablePath, options.phase)

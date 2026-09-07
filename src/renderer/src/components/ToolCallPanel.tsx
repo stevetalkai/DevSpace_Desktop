@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react'
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Download, LoaderCircle, Wrench } from 'lucide-react'
 import type { ToolCallItem } from '../../../shared/contracts'
 import type { Locale } from '../locales/locales'
+import { ClearHistoryButton } from './ClearHistoryButton'
 
 interface ToolCallPanelProps {
   items: ToolCallItem[]
@@ -90,6 +91,7 @@ export function ToolCallPanel({ items, locale, t, onExportReport }: ToolCallPane
             </ol>
           )}
       <div className="tool-call-actions">
+        <ClearHistoryButton target="tools" disabled={!items.some((item) => item.state !== 'working')} t={t} />
         <button className="activity-details" disabled={exporting} onClick={() => void exportReport()}>
           <Download size={13} />{t(exported ? 'app.activity.report.exported' : 'app.activity.report.export')}
         </button>

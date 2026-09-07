@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { ActivityStore } from './ActivityStore'
 
 describe('ActivityStore', () => {
+  it('clears completed history while preserving running tasks and future updates', () => {
+    const store = new ActivityStore()
+    store.add('core.starting', 'working')
+    store.add('chatgpt.configured', 'success')
+    store.clearHistory()
+    expect(store.getSnapshot()).toMatchObject([{ kind: 'core.starting', state: 'working' }])
+    store.add('core.running', 'success')
+    expect(store.getSnapshot()).toMatchObject([{ kind: 'core.running', state: 'success' }])
+  })
+
   it('keeps a bounded chronological activity list', () => {
     let second = 0
     const store = new ActivityStore({ limit: 2, now: () => new Date(second++ * 1_000) })

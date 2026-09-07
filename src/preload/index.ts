@@ -28,6 +28,8 @@ const api: DesktopApi = {
   openLogsFolder: () => ipcRenderer.invoke(ipcChannels.openLogsFolder),
   installTailscale: () => ipcRenderer.invoke(ipcChannels.installTailscale),
   openTailscaleApp: () => ipcRenderer.invoke(ipcChannels.openTailscaleApp),
+  clearHistory: (target) => ipcRenderer.invoke(ipcChannels.clearHistory, target),
+  runTailscaleCommand: (action, source) => ipcRenderer.invoke(ipcChannels.runTailscaleCommand, action, source),
   subscribeTailscaleInstall: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, status: TailscaleInstallStatus): void => listener(status)
     ipcRenderer.on(ipcChannels.tailscaleInstallChanged, handler)

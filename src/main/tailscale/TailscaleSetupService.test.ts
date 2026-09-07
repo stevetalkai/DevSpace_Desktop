@@ -12,8 +12,7 @@ afterEach(async () => {
 
 describe('TailscaleSetupService', () => {
   it.each([
-    ['win32', 'tailscale-setup-latest.exe'],
-    ['darwin', 'Tailscale-latest-macos.pkg']
+    ['win32', 'tailscale-setup-latest.exe']
   ] as const)('downloads and opens the official installer on %s', async (platform, fileName) => {
     const root = await makeTempDirectory()
     const downloadFile = vi.fn(async (_url: string, _destination: string, onProgress: (downloaded: number, total: number) => void) => {
@@ -32,10 +31,10 @@ describe('TailscaleSetupService', () => {
     expect(openPath).toHaveBeenCalledWith(join(root, 'DevSpace Desktop', fileName))
   })
 
-  it('reports unsupported platforms without downloading anything', async () => {
+  it.each(['linux', 'darwin'] as const)('does not download a desktop installer on %s', async (platform) => {
     const downloadFile = vi.fn()
     const service = new TailscaleSetupService({
-      platform: 'linux',
+      platform,
       tempDirectory: await makeTempDirectory(),
       downloadFile,
       openPath: vi.fn()

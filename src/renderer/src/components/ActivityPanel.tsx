@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import { AlertTriangle, Check, CircleEllipsis, Info, LoaderCircle } from 'lucide-react'
 import type { ActivityItem, ActivityKind } from '../../../shared/contracts'
 import type { Locale } from '../locales/locales'
+import { ClearHistoryButton } from './ClearHistoryButton'
 
 interface ActivityPanelProps {
   items: ActivityItem[]
@@ -94,6 +95,7 @@ export function ActivityPanel({ items, locale, t, onOpenDetails }: ActivityPanel
             </ol>
           )}
       <div className="activity-actions">
+        <ClearHistoryButton target="activity" disabled={!items.some((item) => item.state !== 'working')} t={t} />
         <button className="activity-details" onClick={onOpenDetails}>{t('app.activity.open_details')}</button>
       </div>
     </section>

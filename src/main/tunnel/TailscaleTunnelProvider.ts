@@ -57,7 +57,7 @@ export class TailscaleTunnelProvider implements TunnelProvider {
 
     let statusOutput: string
     try {
-      statusOutput = (await this.run(['status', '--json'])).stdout
+      statusOutput = (await this.execute(this.resolveExecutablePath(), ['status', '--json'], { timeoutMs: Math.min(this.timeoutMs, 3_000) })).stdout
     } catch (error) {
       return unavailableEnvironment(errorCodeFor(error), true)
     }
@@ -152,6 +152,7 @@ function executeFile(executable: string, arguments_: readonly string[], options:
   return new Promise((resolve, reject) => {
     execFile(executable, [...arguments_], {
       timeout: options.timeoutMs,
+      killSignal: 'SIGKILL',
       maxBuffer: 1024 * 1024,
       env: process.platform === 'darwin' ? { ...process.env, TAILSCALE_BE_CLI: '1' } : process.env
     }, (error, stdout, stderr) => {

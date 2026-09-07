@@ -70,6 +70,33 @@ export class DiagnosticLogStore {
     }))
   }
 
+  clearToolHistory(): Promise<void> {
+    const operation = this.writeQueue.then(async () => {
+      if (this.logsDirectory) {
+        for (const name of [`${LOG_FILE_NAME}.2`, `${LOG_FILE_NAME}.1`, LOG_FILE_NAME]) {
+          const path = join(this.logsDirectory, name)
+          const contents = await readFile(path, 'utf8').catch((error: unknown) => {
+            if (isMissingFileError(error)) return null
+            throw error
+          })
+          if (contents === null) continue
+          const retained = contents.split(/\r?\n/).filter((line) => {
+            try { return JSON.parse(line).message !== 'tool_call' } catch { return true }
+          }).join('\n')
+          const temporary = `${path}.clearing`
+          const file = await open(temporary, 'w', 0o600)
+          try { await file.writeFile(retained, 'utf8'); await file.sync() } finally { await file.close() }
+          await rename(temporary, path)
+        }
+      }
+      for (let i = this.events.length - 1; i >= 0; i--) {
+        if (this.events[i]?.message === 'tool_call') this.events.splice(i, 1)
+      }
+    })
+    this.writeQueue = operation.catch(() => undefined)
+    return operation
+  }
+
   private async persist(encodedEvent: string): Promise<void> {
     if (!this.logsDirectory) return
 

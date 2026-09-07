@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { ToolCallStore } from './ToolCallStore'
 
 describe('ToolCallStore', () => {
+  it('preserves running calls and completes them after clearing history', () => {
+    const store = new ToolCallStore()
+    store.complete({ ts: '2026-09-02T12:00:00.000Z', level: 'info', event: 'tool_call', tool: 'read', success: true })
+    store.start('exec_command', '2026-09-02T12:00:01.000Z')
+    store.clearHistory()
+    expect(store.getSnapshot()).toMatchObject([{ tool: 'exec_command', state: 'working', sequence: 2 }])
+    store.complete({ ts: '2026-09-02T12:00:02.000Z', level: 'info', event: 'tool_call', tool: 'exec_command', success: true })
+    expect(store.getSnapshot()).toMatchObject([{ tool: 'exec_command', state: 'success', sequence: 2 }])
+  })
+
   it('pairs a completed tool event with its pending row', () => {
     const store = new ToolCallStore()
     store.start('exec_command', '2026-09-02T12:00:00.000Z')

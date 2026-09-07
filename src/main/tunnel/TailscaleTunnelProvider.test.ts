@@ -43,7 +43,7 @@ describe('TailscaleTunnelProvider.detect', () => {
       errorCode: null
     })
     expect(execute).toHaveBeenNthCalledWith(1, '/opt/bin/tailscale', ['version'], { timeoutMs: 10_000 })
-    expect(execute).toHaveBeenNthCalledWith(2, '/opt/bin/tailscale', ['status', '--json'], { timeoutMs: 10_000 })
+    expect(execute).toHaveBeenNthCalledWith(2, '/opt/bin/tailscale', ['status', '--json'], { timeoutMs: 3_000 })
   })
 
   it('resolves the executable path again after Tailscale is installed', async () => {
@@ -63,7 +63,7 @@ describe('TailscaleTunnelProvider.detect', () => {
     expect(execute).toHaveBeenLastCalledWith(
       'C:\\Program Files\\Tailscale\\tailscale.exe',
       ['status', '--json'],
-      { timeoutMs: 10_000 }
+      { timeoutMs: 3_000 }
     )
   })
 

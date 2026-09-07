@@ -428,6 +428,9 @@ export function App(): JSX.Element {
           install={tailscaleInstall}
           detecting={tailscaleDetecting}
           applicationInstalled={snapshot.tailscaleApplicationInstalled}
+          platform={snapshot.platform}
+          homebrewPath={snapshot.homebrewPath}
+          cliInstalled={snapshot.tailscaleCliInstalled}
           t={t}
           onInstall={() => void installTailscale()}
           onOpenApp={() => void openTailscaleApp()}

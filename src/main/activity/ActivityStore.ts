@@ -54,6 +54,12 @@ export class ActivityStore {
     return this.items.map((item) => ({ ...item }))
   }
 
+  clearHistory(): void {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      if (this.items[i]?.state !== 'working') this.items.splice(i, 1)
+    }
+  }
+
   private removeWorkingItems(group: string, detail?: string): void {
     for (let index = this.items.length - 1; index >= 0; index -= 1) {
       const item = this.items[index]!
