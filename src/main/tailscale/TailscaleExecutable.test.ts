@@ -10,6 +10,17 @@ beforeEach(() => {
 })
 
 describe('standalone Tailscale discovery', () => {
+  it.each([
+    ['darwin', '/missing/bin:/custom/bin', '/custom/bin/tailscale'],
+    ['win32', 'D:\\missing;D:\\custom', 'D:\\custom\\tailscale.exe']
+  ] as const)('uses target platform PATH separators on %s', (platform, path, executable) => {
+    vi.mocked(realpathSync).mockImplementation((candidate) => {
+      if (candidate === executable) return String(candidate)
+      throw new Error('missing')
+    })
+    expect(findTailscaleExecutable(platform, path)).toBe(executable)
+  })
+
   it('detects the Windows app bundled CLI after installation without restarting', () => {
     expect(() => findTailscaleExecutable('win32', '')).toThrow()
     vi.mocked(realpathSync).mockImplementation((path) => {
