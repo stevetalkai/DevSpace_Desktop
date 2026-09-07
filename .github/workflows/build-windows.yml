@@ -43,6 +43,6 @@ jobs:
       - name: 保存安装包
         uses: actions/upload-artifact@v4
         with:
-          name: DevSpace-0.1.0-windows-x64
+          name: DevSpace-windows-x64
           path: dist/*.exe
           if-no-files-found: error
