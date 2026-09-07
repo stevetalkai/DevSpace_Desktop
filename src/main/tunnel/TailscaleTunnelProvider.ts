@@ -151,6 +151,7 @@ export class TailscaleTunnelProvider implements TunnelProvider {
 function executeFile(executable: string, arguments_: readonly string[], options: CommandOptions): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     execFile(executable, [...arguments_], {
+      windowsHide: true,
       timeout: options.timeoutMs,
       killSignal: 'SIGKILL',
       maxBuffer: 1024 * 1024,

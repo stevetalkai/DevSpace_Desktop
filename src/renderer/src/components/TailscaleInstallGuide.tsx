@@ -25,14 +25,7 @@ function quote(value: string): string {
 
 export function TailscaleInstallGuide({ platform, homebrewPath, t }: Props): JSX.Element {
   const [source, setSource] = useState<Source>('official')
-  if (platform !== 'darwin') return (
-    <>
-      <p>{t('app.tailscale.cli.windows')}</p>
-      <pre>winget install --id Tailscale.Tailscale --exact{'\n'}tailscale login</pre>
-      <TailscaleCommandButton action="install" t={t} />
-      <p>{t('app.tailscale.cli.after_install')}</p>
-    </>
-  )
+  if (platform !== 'darwin') return <></>
   return (
     <>
       <p role="status">{t(homebrewPath ? 'app.tailscale.brew.found' : 'app.tailscale.brew.missing')}</p>

@@ -35,7 +35,7 @@
 "app.tailscale.setup.intro" = "DevSpace 使用 Tailscale 命令行程序。请先完成安装，再检测后台服务和登录状态。";
 "app.tailscale.cli.instructions" = "安装 Tailscale 命令行程序";
 "app.tailscale.cli.mac" = "macOS：先安装 Homebrew（brew.sh），然后在终端依次执行以下命令。请使用 --formula，避免安装桌面版。";
-"app.tailscale.cli.windows" = "Windows：在管理员终端安装 Tailscale，安装完成后打开新终端，再执行登录命令。";
+"app.tailscale.cli.windows" = "Windows：安装官方 Tailscale 应用即可，无需安装 WinGet 或手动输入命令。安装完成后 DevSpace 会自动检测，并使用应用自带的命令行工具管理连接。";
 "app.tailscale.cli.after_install" = "启动服务可能需要管理员密码。按终端提供的网址完成浏览器登录，然后返回此处重新检测。";
 "app.tailscale.cli.detect" = "重新检测命令行";
 "app.tailscale.setup.environment_check" = "环境检查";

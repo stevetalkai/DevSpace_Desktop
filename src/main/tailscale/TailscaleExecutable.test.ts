@@ -10,6 +10,15 @@ beforeEach(() => {
 })
 
 describe('standalone Tailscale discovery', () => {
+  it('detects the Windows app bundled CLI after installation without restarting', () => {
+    expect(() => findTailscaleExecutable('win32', '')).toThrow()
+    vi.mocked(realpathSync).mockImplementation((path) => {
+      if (path === 'C:\\Program Files\\Tailscale\\tailscale.exe') return String(path)
+      throw new Error('missing')
+    })
+    expect(findTailscaleExecutable('win32', '')).toBe('C:\\Program Files\\Tailscale\\tailscale.exe')
+  })
+
   it('finds a CLI installed outside the standard directories', () => {
     vi.mocked(realpathSync).mockImplementation((path) => {
       if (path === '/custom/bin/tailscale') return String(path)

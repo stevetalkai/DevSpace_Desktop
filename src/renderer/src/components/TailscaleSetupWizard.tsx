@@ -3,6 +3,7 @@ import { useEffect, useRef, type JSX } from 'react'
 import type { TailscaleInstallStatus, TunnelStatus } from '../../../shared/contracts'
 import { TailscaleInstallGuide } from './TailscaleInstallGuide'
 import { TailscaleCommandButton } from './TailscaleCommandButton'
+import { WindowsTailscaleInstall } from './WindowsTailscaleInstall'
 
 interface TailscaleSetupWizardProps {
   tunnel: TunnelStatus
@@ -72,8 +73,10 @@ export function TailscaleSetupWizard(props: TailscaleSetupWizardProps): JSX.Elem
         <div className="tailscale-setup__action">
           {!installed ? (
             <>
-              <h3>{props.t('app.tailscale.cli.instructions')}</h3>
-              <TailscaleInstallGuide platform={props.platform} homebrewPath={props.homebrewPath} t={props.t} />
+              <h3>{props.t(props.platform === 'win32' ? 'app.tailscale.setup.install_title' : 'app.tailscale.cli.instructions')}</h3>
+              {props.platform === 'win32'
+                ? <WindowsTailscaleInstall install={props.install} onInstall={props.onInstall} t={props.t} />
+                : <TailscaleInstallGuide platform={props.platform} homebrewPath={props.homebrewPath} t={props.t} />}
               <button className="primary-button" disabled={props.detecting} onClick={props.onDetect}>
                 {props.detecting && <LoaderCircle className="spin" size={15} />}
                 {props.t(props.detecting ? 'app.tailscale.setup.detecting' : 'app.tailscale.cli.detect')}

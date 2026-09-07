@@ -6,7 +6,7 @@ import { findTailscaleExecutable } from './TailscaleExecutable'
 export function setupCommand(action: unknown, source: unknown, platform: string, brew: string | null, cli: string): string {
   if (!['install', 'service', 'login'].includes(String(action)) || !['official', 'ustc'].includes(String(source))) throw new Error('Invalid setup action')
   if (platform === 'win32') {
-    if (action === 'install') return 'winget install --id Tailscale.Tailscale --exact'
+    if (action === 'install') throw new Error('Use the official Windows installer')
     if (action === 'service') return "Start-Service -Name 'Tailscale'"
     return "& '" + cli.replace(/'/g, "''") + "' login"
   }

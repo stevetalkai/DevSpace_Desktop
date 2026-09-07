@@ -35,7 +35,7 @@
 "app.tailscale.setup.intro" = "DevSpace uses the Tailscale command-line client. Install it first, then check the background service and sign-in status.";
 "app.tailscale.cli.instructions" = "Install the Tailscale command-line client";
 "app.tailscale.cli.mac" = "macOS: install Homebrew (brew.sh) first, then run these commands in Terminal. Use --formula to avoid installing the desktop app.";
-"app.tailscale.cli.windows" = "Windows: install Tailscale in an administrator terminal. Open a new terminal after installation, then run the login command.";
+"app.tailscale.cli.windows" = "Windows: install the official Tailscale app. No WinGet or manual commands are needed. DevSpace detects the installation automatically and manages connections using its bundled command-line tool.";
 "app.tailscale.cli.after_install" = "Starting the service may require an administrator password. Complete browser sign-in using the URL shown in the terminal, then return here to check again.";
 "app.tailscale.cli.detect" = "Check command-line client again";
 "app.tailscale.setup.environment_check" = "Environment check";
